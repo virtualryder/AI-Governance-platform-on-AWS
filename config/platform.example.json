@@ -1,0 +1,39 @@
+{
+  "customerName": "example-state-agency",
+  "environment": "dev",
+  "region": "us-east-1",
+  "dataClassification": "confidential",
+  "costCenter": "ai-platform",
+  "hub": { "accountId": "111111111111" },
+  "governance": {
+    "logRetentionDays": 365,
+    "invocationLogging": true,
+    "cloudTrailDataEvents": true,
+    "guardrail": {
+      "enabled": true,
+      "contentFilterStrength": "HIGH",
+      "piiEntitiesToBlock": ["US_SOCIAL_SECURITY_NUMBER", "CREDIT_DEBIT_CARD_NUMBER", "US_BANK_ACCOUNT_NUMBER"],
+      "piiEntitiesToAnonymize": ["EMAIL", "PHONE", "ADDRESS", "NAME"],
+      "deniedTopics": [
+        { "name": "LegalAdvice", "definition": "Providing definitive legal advice or legal determinations to members of the public.", "examples": ["Am I legally required to repay this benefit?"] },
+        { "name": "MedicalDiagnosis", "definition": "Diagnosing medical conditions or recommending specific treatments.", "examples": ["What disease do I have based on these symptoms?"] }
+      ],
+      "blockedMessage": "This request can't be completed under this agency's AI use policy.",
+      "enforceAccountLevel": true
+    }
+  },
+  "agentcore": {
+    "enableBrowser": true,
+    "enableMemory": true,
+    "memoryEventExpiryDays": 30,
+    "accessTokenValidityMinutes": 15,
+    "allowedModelIds": ["anthropic.claude-sonnet-4-5-20250929-v1:0"]
+  },
+  "controls": {
+    "monthlyBudgetUsd": 500,
+    "budgetAlertEmails": ["ai-platform-owners@example.gov"],
+    "killSwitch": true,
+    "humanInTheLoop": true,
+    "gatewayRequestsPerMinute": 120
+  }
+}

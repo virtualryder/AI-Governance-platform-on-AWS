@@ -9,3 +9,6 @@ cdk.out.dbg
 synth-err.log
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+# Real/customer config files may carry account IDs — only *.example.json is tracked.
+config/*.json
+!config/*.example.json

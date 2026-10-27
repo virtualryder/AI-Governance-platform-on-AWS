@@ -68,6 +68,9 @@ export class InvocationLogging extends Construct {
 
     new AwsCustomResource(this, 'Resource', {
       resourceType: 'Custom::BedrockInvocationLogging',
+      // Use the provider runtime's bundled AWS SDK v3 (no npm install at deploy): faster, cheaper,
+      // deterministic. The bundled SDK includes the bedrock logging-config APIs.
+      installLatestAwsSdk: false,
       onCreate: {
         service: 'bedrock',
         action: 'PutModelInvocationLoggingConfiguration',

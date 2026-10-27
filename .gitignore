@@ -7,3 +7,5 @@ cdk.context.json
 .env
 cdk.out.dbg
 synth-err.log
+.claude/settings.local.json
+.claude/scheduled_tasks.lock

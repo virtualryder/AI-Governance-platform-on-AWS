@@ -19,8 +19,12 @@ See `docs/ARCHITECTURE.md` for the decision record and `docs/CONTROLS.md` for th
 1. **Ground every AWS resource in current AWS documentation.** Before adding or changing a resource,
    confirm the property names against the installed `aws-cdk-lib` typings
    (`node_modules/aws-cdk-lib/aws-<svc>/lib/*.generated.d.ts`) and the AWS docs. Do not invent properties.
-   If a capability has no CloudFormation resource (today: AgentCore Registry, CloudWatch Omni,
-   Bedrock model invocation logging), implement it as an `AwsCustomResource` and say so in a comment.
+   If a capability has no CloudFormation resource, implement it as an `AwsCustomResource` and say so in a
+   comment. Grounded 2026-10-27: **only AWS Agent Registry and Bedrock model-invocation-logging still lack a
+   CFN type.** AgentCore **Policy/PolicyEngine/Gateway/Runtime/Memory/WorkloadIdentity now DO have native L1**
+   (`aws-cdk-lib/aws-bedrockagentcore`) — use them, not a custom resource. CloudWatch Omni is GA (API/CFN
+   accessible); AgentCore Observability is convention-based (ADOT + Transaction Search via
+   `AWS::XRay::TransactionSearchConfig`).
 2. **Iterate in small steps.** After every change: `npm run build` → `npm run synth:<mode>` → `npm test`.
    Fix before moving on. Never deliver a large untested batch.
 3. **No deployments from this machine without explicit approval.** The default AWS CLI profile is
@@ -52,10 +56,17 @@ test/                      jest assertions on synthesized templates
 docs/                      architecture, controls matrix, runbooks
 ```
 
+## Build approach: consolidate, don't greenfield
+This repo is the clean consolidation point for the prior **Aegis** work. Build steps 2–6 by **harvesting**
+proven assets per **`docs/PORT-MAP.md`** (exact source-file → target → treatment for the private Aegis
+lineage under `C:\Users\daryd\Projects-DR\` and the AWS-public clones under `C:\DRyder\_aws-public-reference\`).
+Runtime = Python (reuse `governed-core` Strands harness); infra = CDK TypeScript. See `docs/ARCHITECTURE.md`
+(ADR, incl. multi-agent + AWS provenance) and `docs/CONTROLS.md` (control matrix).
+
 ## Build plan (keep TaskList in sync)
-1. ✅ Scaffold, decision record, config schema, empty synth
-2. Governance baseline: KMS, log bucket, CloudTrail (incl. AgentCore data events), Bedrock invocation logging, guardrail + version, account-level guardrail enforcement
-3. AgentCore layer: Cognito (short-lived tokens), Gateway + Policy engine + baseline Cedar, Memory, Runtime/Harness, Browser, observability config
-4. Controls: kill switch (Cedar forbid-all / endpoint disable / SCP), HITL Step Functions (InvokeHarness + waitForTaskToken), Budgets + actions, Gateway rate limits, Guard hooks, Service Catalog product
-5. Hub + org: Registry (custom resource, RAM share), cross-account observability sink, central log archive, Bedrock org policy, Agentic-OU SCPs
-6. Verify all modes, nag, tests, docs
+1. ✅ Scaffold, decision record, config schema, empty synth — + grounded ADR/CONTROLS/PORT-MAP, extended config
+2. Governance baseline: KMS, log bucket, CloudTrail (incl. AgentCore data events), Bedrock invocation logging (custom resource), guardrail **+ version**, account-level enforcement + `Null:{bedrock:GuardrailIdentifier}` ungoverned-inference deny
+3. AgentCore layer (native L1): Cognito/IdP (short-lived tokens), Gateway + PolicyEngine + baseline Cedar (per-gateway), Memory, Runtime/RuntimeEndpoint, Browser, CodeInterpreter, **A2A + multi-agent collaboration**, observability config
+4. Controls: layered kill switch (Cedar forbid-all / endpoint disable / SCP, fan out across agent graph), HITL Step Functions (waitForTaskToken), Budgets + SCP action, Gateway rate limits, **per-user interceptor + ledger**, Guard hooks, Service Catalog product
+5. Hub + org: Registry (custom resource, RAM share), OAM cross-account sink + CloudWatch Omni, central log archive, Bedrock declarative policy + lifted SCPs, Agentic-OU SCPs, Guard hooks via StackSets, `aegis-platform-deployer` role, SRA detective Config rules
+6. use-cases/_harness + citizen-311 manifest; then verify all modes, cdk-nag, tests, per-mode runbooks (`docs/runbooks/`)

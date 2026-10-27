@@ -65,7 +65,7 @@ Runtime = Python (reuse `governed-core` Strands harness); infra = CDK TypeScript
 
 ## Build plan (keep TaskList in sync)
 1. ✅ Scaffold, decision record, config schema, empty synth — + grounded ADR/CONTROLS/PORT-MAP, extended config
-2. Governance baseline: KMS, log bucket, CloudTrail (incl. AgentCore data events), Bedrock invocation logging (custom resource), guardrail **+ version**, account-level enforcement + `Null:{bedrock:GuardrailIdentifier}` ungoverned-inference deny
+2. ✅ Governance baseline: KMS, log bucket, CloudTrail (incl. AgentCore data events), Bedrock invocation logging (custom resource), guardrail **+ version**, account-level enforcement + `Null:{bedrock:GuardrailIdentifier}` ungoverned-inference deny
 3. AgentCore layer (native L1): Cognito/IdP (short-lived tokens), Gateway + PolicyEngine + baseline Cedar (per-gateway), Memory, Runtime/RuntimeEndpoint, Browser, CodeInterpreter, **A2A + multi-agent collaboration**, observability config
 4. Controls: layered kill switch (Cedar forbid-all / endpoint disable / SCP, fan out across agent graph), HITL Step Functions (waitForTaskToken), Budgets + SCP action, Gateway rate limits, **per-user interceptor + ledger**, Guard hooks, Service Catalog product
 5. Hub + org: Registry (custom resource, RAM share), OAM cross-account sink + CloudWatch Omni, central log archive, Bedrock declarative policy + lifted SCPs, Agentic-OU SCPs, Guard hooks via StackSets, `aegis-platform-deployer` role, SRA detective Config rules

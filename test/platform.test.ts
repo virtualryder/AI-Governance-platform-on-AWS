@@ -1,9 +1,18 @@
 import { App } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import { loadConfig } from '../lib/config/platform-config';
+import { loadConfig, PlatformConfig } from '../lib/config/platform-config';
 import { GovernanceBaselineStack } from '../lib/stacks/governance-baseline-stack';
+import { AgentPlatformStack } from '../lib/stacks/agent-platform-stack';
 
 const config = loadConfig('config/platform.example.json');
+
+function agentPlatformTemplate(overrides?: (c: PlatformConfig) => void) {
+  const c = JSON.parse(JSON.stringify(config)) as PlatformConfig;
+  overrides?.(c);
+  const app = new App();
+  const stack = new AgentPlatformStack(app, 'AP', { config: c, mode: 'standalone', env: { region: c.region } });
+  return Template.fromStack(stack);
+}
 
 test('config loads and validates', () => {
   expect(config.customerName).toBe('example-state-agency');
@@ -78,4 +87,45 @@ test('guardrail is versioned and ungoverned inference is denied', () => {
       ]),
     },
   });
+});
+
+test('agent platform: MCP gateway with CUSTOM_JWT, Cedar engine, memory, browser, observability', () => {
+  const t = agentPlatformTemplate();
+  t.hasResourceProperties('AWS::BedrockAgentCore::Gateway', {
+    AuthorizerType: 'CUSTOM_JWT',
+    ProtocolType: 'MCP',
+    PolicyEngineConfiguration: Match.objectLike({ Mode: 'LOG_ONLY' }),
+  });
+  t.resourceCountIs('AWS::BedrockAgentCore::PolicyEngine', 1);
+  t.resourceCountIs('AWS::BedrockAgentCore::Policy', 1); // baseline Cedar, rendered per gateway
+  t.resourceCountIs('AWS::BedrockAgentCore::Memory', 1); // example enables memory
+  t.resourceCountIs('AWS::BedrockAgentCore::BrowserCustom', 1);
+  t.resourceCountIs('AWS::XRay::TransactionSearchConfig', 1);
+  // TOTP-only MFA means no Cognito SMS role.
+  const roles = t.findResources('AWS::IAM::Role');
+  for (const r of Object.values(roles)) {
+    const principal = JSON.stringify((r as any).Properties.AssumeRolePolicyDocument);
+    expect(principal).not.toContain('cognito-idp.amazonaws.com');
+  }
+});
+
+test('agent platform: memory CMK-encrypted', () => {
+  const t = agentPlatformTemplate();
+  t.hasResourceProperties('AWS::BedrockAgentCore::Memory', {
+    EncryptionKeyArn: Match.anyValue(),
+  });
+});
+
+test('agent platform: runtime + endpoint only when an image is configured', () => {
+  const without = agentPlatformTemplate();
+  without.resourceCountIs('AWS::BedrockAgentCore::Runtime', 0);
+  without.resourceCountIs('AWS::BedrockAgentCore::RuntimeEndpoint', 0);
+
+  const withImage = agentPlatformTemplate((c) => {
+    c.agentcore.runtimeImageUri = '111111111111.dkr.ecr.us-east-1.amazonaws.com/agent:latest';
+    c.agentcore.enableCodeInterpreter = true;
+  });
+  withImage.resourceCountIs('AWS::BedrockAgentCore::Runtime', 1);
+  withImage.resourceCountIs('AWS::BedrockAgentCore::RuntimeEndpoint', 1);
+  withImage.resourceCountIs('AWS::BedrockAgentCore::CodeInterpreterCustom', 1);
 });

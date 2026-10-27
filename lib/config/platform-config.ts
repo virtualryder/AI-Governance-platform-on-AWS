@@ -120,6 +120,16 @@ export interface PlatformConfig {
     protocol?: RuntimeProtocol;
     enableCodeInterpreter?: boolean;
     multiAgent?: MultiAgentConfig;
+    /** ECR image URI for the AgentCore Runtime. Runtime/RuntimeEndpoint are only created when set
+     * (the image is produced by the use-case harness, step 6). */
+    runtimeImageUri?: string;
+    /** Enable CloudWatch Transaction Search (AgentCore Observability). Defaults to true. */
+    enableObservability?: boolean;
+    /** Percentage of spans indexed from CloudWatch Logs to X-Ray (cost control). Defaults to 5. */
+    observabilityIndexingPercentage?: number;
+    /** Attach the rendered baseline Cedar policies to the gateway's policy engine. Defaults to true.
+     * Tool-specific policies are added by the use-case once the gateway's tool schema exists. */
+    attachBaselineCedarPolicies?: boolean;
   };
   controls: {
     monthlyBudgetUsd: number;

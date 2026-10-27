@@ -1,27 +1,56 @@
 # Governed AI Agent Platform (Amazon Bedrock AgentCore)
 
-A repeatable, CDK-deployable AI governance landing zone for SLG and HCLS customers, plus a harness for
-building the first governed use case. Built with Shashi (SLG) and David (HCLS).
+A repeatable, **config-driven, CDK-deployable AI governance platform** built on Amazon Bedrock
+AgentCore. It targets regulated workloads — US State & Local Government (SLG) and Healthcare & Life
+Sciences (HCLS) — and ships as four deployment modes so it can meet a customer where they already
+are, from a single-account pilot to an organization-wide control plane.
 
-**Start here:** `docs/ARCHITECTURE.md` (why hub-and-spoke + standalone) · `CLAUDE.md` (build rules and plan)
+**Start here:** `docs/ARCHITECTURE.md` (decision record) · `docs/CONTROLS.md` (control matrix) ·
+`CLAUDE.md` (build rules and plan).
 
 ## Deployment modes
-| Mode | Use when | Command |
+Pick the smallest mode that fits — reuse an existing landing zone rather than rebuilding one.
+
+| Mode | Use when | Stacks |
 |---|---|---|
-| `standalone` | Pilot in one existing or new account | `npx cdk deploy --all -c mode=standalone -c configFile=config/<customer>.json` |
-| `hub` | Dedicated AI governance account | `npx cdk deploy --all -c mode=hub ...` |
-| `spoke` | Each agent/workload account | `npx cdk deploy --all -c mode=spoke ...` |
-| `org` | Management or delegated-admin account | `npx cdk deploy --all -c mode=org ...` |
+| `standalone` | Pilot in one existing or new account (thin first slice) | Baseline + AgentPlatform + Controls (+ collapsed hub) |
+| `spoke` | Add governed agents to an existing account / landing zone | Baseline + AgentPlatform + Controls |
+| `hub` | Dedicated AI governance account (central telemetry, registry) | GovernanceHub |
+| `org` | Management / delegated-admin account | OrgFoundation (Bedrock org policy, SCPs, Guard hooks via StackSets) |
+
+```powershell
+npx cdk deploy --all -c mode=standalone -c configFile=config/<customer>.json
+```
+
+## What's built
+
+- **Governance baseline** (per account): customer-managed KMS, WORM evidence/log bucket (S3 Object
+  Lock, TLS-only, versioned), multi-region CloudTrail with **AgentCore data events** (Gateway /
+  Runtime) + CMK-encrypted CloudWatch Logs, **Bedrock model-invocation logging**, and a **versioned
+  Bedrock Guardrail** with an ungoverned-inference deny (`Null:{bedrock:GuardrailIdentifier}`).
+- **Security defaults everywhere:** customer-managed KMS on every store that supports it, S3 block
+  public access, least-privilege IAM, and `cdk-nag` (`AwsSolutions` + `HIPAASecurity`) passing with
+  justified, documented suppressions.
+- **Config-driven:** all customer differences live in `config/<customer>.json`
+  (schema: `lib/config/platform-config.ts`). No customer names or account IDs in code.
+
+AgentCore runtime/gateway/identity, layered controls (kill switch, HITL, budgets, per-user
+governance), hub/org foundation, and a first use-case harness are built in subsequent phases — see
+the build plan in `CLAUDE.md`.
 
 ## Develop
 ```powershell
 npm install
-npm run build        # type-check
-npm test             # template assertions
-npm run synth:standalone
-npm run nag          # cdk-nag AwsSolutions + HIPAA packs
+npm run build              # type-check
+npm test                   # template assertions
+npm run synth:standalone   # (also :hub :spoke :org)
+npm run nag                # cdk-nag AwsSolutions + HIPAA packs
 ```
 Copy `config/platform.example.json` to `config/<customer>.json` for each customer.
 
+> **Deployment is intentionally not run from arbitrary machines.** Synth and test freely; deploy only
+> against an explicitly named target account/profile.
+
 ## Status
-Scaffold complete; all four modes synth. Governance controls are built in phases (see `CLAUDE.md`).
+Steps 1–2 complete (scaffold + governance baseline); all four modes synth, tests green, cdk-nag
+clean. Steps 3–6 (AgentCore layer, controls, hub/org, use-case harness) in progress.

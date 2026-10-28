@@ -1,0 +1,98 @@
+# Citizen 311 service-request intake — first governed use case on the platform.
+# Compiled by use-cases/_harness/render.py into gateway targets, Cedar policies (per Cognito group),
+# guardrail config, and the runtime workflow prompt. The agent helps a CSR triage a resident's 311
+# request end-to-end but NEVER submits it — submission is a consequential action owned by the human
+# sign-off gate (HITL Step Functions), enforced by a Cedar forbid.
+agent:
+  slug: citizen-311
+  prefix: c311
+  title: citizen 311 service-request intake
+  region: us-east-1
+
+identity:
+  pool_name: govai-citizen-311
+  client_name: citizen-311-agent
+  reviewer_group: csr-agents          # Cognito group permitted to drive the governed tools
+  users:
+    - { name: csr-alice, password: "ChangeMe-csr-1!", in_group: true }
+    - { name: viewer-bob, password: "ChangeMe-viewer-1!", in_group: false }   # not in group -> deny-by-default
+
+engine:
+  name: citizen-311-policy-engine
+  description: Cedar policy engine for the citizen 311 gateway
+
+gateway:
+  name: citizen-311-gw
+  description: Governed MCP gateway for citizen 311 tools
+  ssm_discovery_param: /governed-ai/citizen-311/prod/agent-platform/gateway-url
+
+model:
+  runtime_model_id: us.anthropic.claude-sonnet-4-5-20250929-v1:0
+  draft_model_id: us.anthropic.claude-sonnet-4-5-20250929-v1:0
+
+guardrail:
+  name: citizen-311-guardrail
+  description: PII masking + prompt-attack filter for public-facing 311 intake
+  pii_anonymize: [EMAIL, PHONE, ADDRESS, NAME]
+  prompt_attack: HIGH
+
+controls:
+  fail_closed_masking: true
+  worm_audit: true
+  human_signoff_gate: true
+
+audit:
+  object_lock_mode: GOVERNANCE
+  retention_days: 365
+
+tools:
+  - target: svc311
+    lambda: c311-svc-tools
+    handler: index.handler
+    kind: domain
+    mcp_tools:
+      - name: lookup_service_catalog
+        description: List the agency's 311 service-request categories and required fields.
+        input: {}
+        required: []
+      - name: classify_request
+        description: Classify a resident's free-text complaint into a service category.
+        input:
+          text: { type: string, description: The resident's description of the issue }
+        required: [text]
+      - name: validate_address
+        description: Validate and normalize a service-location address within the jurisdiction.
+        input:
+          address: { type: string, description: Street address of the issue }
+        required: [address]
+      - name: check_duplicate
+        description: Check for an existing open request at the same address/category.
+        input:
+          category: { type: string, description: Service category }
+          address: { type: string, description: Normalized address }
+        required: [category, address]
+      - name: submit_service_request
+        description: CONSEQUENTIAL — file the service request in the system of record. Owned by the human sign-off gate.
+        input:
+          category: { type: string, description: Service category }
+          address: { type: string, description: Normalized address }
+          details: { type: string, description: Request details }
+        required: [category, address]
+
+policies:
+  # Authenticated CSR agents (Cognito group) may drive the governed tools.
+  - { kind: permit, name: permit_csr_agents, role_group: csr-agents }
+  # The agent may never submit directly — the human sign-off gate owns the consequential action.
+  - { kind: forbid, name: no_self_submit, action: submit_service_request }
+
+workflow:
+  steps:
+    - look up the agency's 311 service catalog to understand categories and required fields
+    - classify the resident's request into the right service category
+    - validate and normalize the service-location address
+    - check for an existing duplicate request at that address and category
+    - request human sign-off to submit, passing the category, address, and details
+  consequential_action: submit_service_request
+
+runtime:
+  name: citizen_311_agent

@@ -59,5 +59,7 @@ per-user Gateway interceptor + DynamoDB ledger (block / model-allowlist-by-group
 four modes synth, 12 tests green, cdk-nag clean (both the default and interceptor-enabled paths).
 Step 5 (hub/org) in progress — org SCPs + SCP-exempt deployer role, and the governance hub's central
 WORM log archive + OAM cross-account sink are in; remaining: Bedrock org declarative policy, Guard
-hooks (StackSets), Agent Registry, Service Catalog. Step 6 (Strands harness + citizen-311) is next.
-See `CLAUDE.md`.
+hooks (StackSets), Agent Registry, Service Catalog. Step 6 (Strands harness + citizen-311) in progress — the reusable `use-cases/_harness/` (Strands
+`agent.py` + `render.py` manifest compiler + ARM64 Dockerfile) and the citizen-311 manifest are in and
+render-verified (Cedar permit-by-group + forbid the consequential submit, MCP targets, guardrail).
+See `CLAUDE.md` and `use-cases/README.md`.

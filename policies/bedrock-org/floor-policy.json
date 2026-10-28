@@ -1,0 +1,19 @@
+{
+  "bedrock": {
+    "guardrail_inference": {
+      "{{REGION}}": {
+        "config_1": {
+          "identifier": { "@@assign": "{{GUARDRAIL_ARN}}" },
+          "selective_content_guarding": {
+            "system": { "@@assign": "comprehensive" },
+            "messages": { "@@assign": "comprehensive" }
+          },
+          "model_enforcement": {
+            "included_models": { "@@assign": ["ALL"] },
+            "excluded_models": { "@@assign": [] }
+          }
+        }
+      }
+    }
+  }
+}

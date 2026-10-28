@@ -9,10 +9,10 @@ export interface OrgPoliciesProps {
   config: PlatformConfig;
 }
 
-const SCP_DIR = path.join(__dirname, '..', '..', 'policies', 'scp');
+const POLICY_ROOT = path.join(__dirname, '..', '..', 'policies');
 
-function renderScp(file: string, vars: Record<string, string>): object {
-  let text = fs.readFileSync(path.join(SCP_DIR, file), 'utf-8');
+function renderPolicy(relativePath: string, vars: Record<string, string>): object {
+  let text = fs.readFileSync(path.join(POLICY_ROOT, relativePath), 'utf-8');
   for (const [k, v] of Object.entries(vars)) text = text.replaceAll(`{{${k}}}`, v);
   return JSON.parse(text);
 }
@@ -30,11 +30,14 @@ function renderScp(file: string, vars: Record<string, string>): object {
 export class OrgPolicies extends Construct {
   readonly deployerRole: iam.Role;
   readonly scps: organizations.CfnPolicy[];
+  /** Bedrock org declarative policy (BEDROCK_POLICY), pinning the org guardrail floor. */
+  readonly bedrockPolicy?: organizations.CfnPolicy;
 
   constructor(scope: Construct, id: string, props: OrgPoliciesProps) {
     super(scope, id);
     const { config } = props;
     const org = config.org ?? {};
+    const region = config.region;
     const deployerRole = org.deployerRoleName ?? `govai-${config.customerName}-platform-deployer`;
     const governedPrefix = org.governedRolePrefix ?? `govai-${config.customerName}-governed`;
     const evidencePrefix = org.evidenceBucketPrefix ?? `govai-${config.customerName}`;
@@ -46,17 +49,32 @@ export class OrgPolicies extends Construct {
         name: `govai-${config.customerName}-ai-inference-perimeter`,
         description: 'Deny Bedrock inference outside governed roles; protect governed roles.',
         type: 'SERVICE_CONTROL_POLICY',
-        content: renderScp('ai-inference-perimeter.json', vars),
+        content: renderPolicy('scp/ai-inference-perimeter.json', vars),
         targetIds,
       }),
       new organizations.CfnPolicy(this, 'ControlPlaneIntegrity', {
         name: `govai-${config.customerName}-ai-control-plane-integrity`,
         description: 'Protect invocation logging, AgentCore/guardrail control plane, and evidence vaults.',
         type: 'SERVICE_CONTROL_POLICY',
-        content: renderScp('ai-control-plane-integrity.json', vars),
+        content: renderPolicy('scp/ai-control-plane-integrity.json', vars),
         targetIds,
       }),
     ];
+
+    // Bedrock org declarative policy (BEDROCK_POLICY) — pins a guardrail floor + comprehensive content
+    // guarding org-wide. Only when the customer supplies the org guardrail ARN to enforce.
+    if (org.orgGuardrailArn) {
+      this.bedrockPolicy = new organizations.CfnPolicy(this, 'BedrockFloor', {
+        name: `govai-${config.customerName}-bedrock-floor`,
+        description: 'Org Bedrock guardrail floor (declarative policy): required guardrail + comprehensive guarding.',
+        type: 'BEDROCK_POLICY',
+        content: renderPolicy('bedrock-org/floor-policy.json', {
+          REGION: region,
+          GUARDRAIL_ARN: org.orgGuardrailArn,
+        }),
+        targetIds,
+      });
+    }
 
     // The SCP-exempt deployer role: assumed within the account; empowered over exactly the governance
     // control plane the SCPs protect (so it can deploy/repair the platform while everyone else is denied).

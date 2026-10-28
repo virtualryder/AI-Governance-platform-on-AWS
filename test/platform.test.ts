@@ -201,6 +201,17 @@ test('org foundation: lifted SCPs + SCP-exempt deployer role', () => {
   });
 });
 
+test('org foundation: Bedrock declarative org policy when a guardrail floor is configured', () => {
+  const c = JSON.parse(JSON.stringify(config)) as PlatformConfig;
+  c.org = { orgGuardrailArn: 'arn:aws:bedrock:us-east-1:111122223333:guardrail/abc:1' };
+  const t = Template.fromStack(
+    new OrgFoundationStack(new App(), 'ORGB', { config: c, mode: 'org', env: { region: c.region } }),
+  );
+  t.hasResourceProperties('AWS::Organizations::Policy', { Type: 'BEDROCK_POLICY' });
+  // 2 SCPs + 1 Bedrock declarative policy.
+  t.resourceCountIs('AWS::Organizations::Policy', 3);
+});
+
 test('per-user interceptor: ledger + REQUEST interceptor attached when enabled', () => {
   const t = agentPlatformTemplate((c) => {
     c.controls.perUserGovernance = { enabled: true, ratePerMinute: 60 };

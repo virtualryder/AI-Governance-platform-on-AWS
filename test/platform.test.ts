@@ -3,6 +3,7 @@ import { Match, Template } from 'aws-cdk-lib/assertions';
 import { loadConfig, PlatformConfig } from '../lib/config/platform-config';
 import { GovernanceBaselineStack } from '../lib/stacks/governance-baseline-stack';
 import { AgentPlatformStack } from '../lib/stacks/agent-platform-stack';
+import { ControlsStack } from '../lib/stacks/controls-stack';
 
 const config = loadConfig('config/platform.example.json');
 
@@ -136,4 +137,36 @@ test('agent platform: baseline Cedar attaches only when explicitly opted in', ()
     c.agentcore.attachBaselineCedarPolicies = true;
   });
   t.resourceCountIs('AWS::BedrockAgentCore::Policy', 1);
+});
+
+function controlsTemplate(overrides?: (c: PlatformConfig) => void) {
+  const c = JSON.parse(JSON.stringify(config)) as PlatformConfig;
+  overrides?.(c);
+  const app = new App();
+  const stack = new ControlsStack(app, 'CT', { config: c, mode: 'standalone', env: { region: c.region } });
+  return Template.fromStack(stack);
+}
+
+test('controls: kill switch, monthly budget, and HITL approval', () => {
+  const t = controlsTemplate();
+  // Kill switch: a fail-closed SSM flag + a Lambda to engage/release.
+  t.hasResourceProperties('AWS::SSM::Parameter', {
+    Name: '/governed-ai/example-state-agency/dev/controls/kill-switch-state',
+  });
+  // Monthly cost budget with alert subscribers.
+  t.hasResourceProperties('AWS::Budgets::Budget', {
+    Budget: Match.objectLike({ BudgetType: 'COST', TimeUnit: 'MONTHLY' }),
+  });
+  // HITL (example enables it): a waitForTaskToken state machine that logs ALL events.
+  t.resourceCountIs('AWS::StepFunctions::StateMachine', 1);
+  t.hasResourceProperties('AWS::StepFunctions::StateMachine', {
+    LoggingConfiguration: Match.objectLike({ Level: 'ALL' }),
+  });
+});
+
+test('controls: HITL omitted when disabled', () => {
+  const t = controlsTemplate((c) => {
+    c.controls.humanInTheLoop = false;
+  });
+  t.resourceCountIs('AWS::StepFunctions::StateMachine', 0);
 });

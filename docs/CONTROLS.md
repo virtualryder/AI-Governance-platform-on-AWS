@@ -6,6 +6,14 @@ mode, an IaC mechanism, and the governance concern it satisfies. "Custom" = `Aws
 
 Legend — Modes: **S**=standalone · **P**=spoke · **H**=hub · **O**=org.
 
+### Implementation status (by build step)
+- **Step 2 (baseline, deployed+verified on AWS):** A1, A2, A3, A4, B1, B2.
+- **Step 3 (agent platform, deployed+verified on AWS):** C1, C2, C3, C5 (engine + per-gateway Cedar; `LOG_ONLY` default), D2, G1, G2, G3.
+- **Step 4 slice 1 (controls, synth+nag+tests green):** E1 (Cedar forbid-all kill switch, Lambda-driven), E4 (budgets + alerts), E6 (HITL `waitForTaskToken`).
+- **Step 4 slice 2 (next):** E5 (gateway rate limit), E7 (per-user interceptor + ledger), F1–F3 (Guard hooks, Service Catalog).
+- **Step 5 (hub/org, not started):** A5, B3, B4, D3, D4, E2, E3, F2, F4, H3, SRA detective rules.
+Controls not yet listed are design targets realized in later steps.
+
 ## A. Evidence & audit (per-account baseline)
 
 | # | Control | Service / resource | IaC | Modes | Notes |

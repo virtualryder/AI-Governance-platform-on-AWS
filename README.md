@@ -52,5 +52,8 @@ Copy `config/platform.example.json` to `config/<customer>.json` for each custome
 > against an explicitly named target account/profile.
 
 ## Status
-Steps 1–2 complete (scaffold + governance baseline); all four modes synth, tests green, cdk-nag
-clean. Steps 3–6 (AgentCore layer, controls, hub/org, use-case harness) in progress.
+Steps 1–3 complete and **deployed + verified on live AWS** (governance baseline + AgentCore layer:
+Cognito JWT, MCP gateway + Cedar policy engine, memory, tools, observability). Step 4 (controls)
+slice 1 done — Cedar forbid-all kill switch, HITL `waitForTaskToken`, budgets + alerts. All four
+modes synth, 11 tests green, cdk-nag clean. Remaining: step 4 slice 2 (per-user interceptor, rate
+limits, Service Catalog), step 5 (hub/org), step 6 (use-case harness + citizen-311). See `CLAUDE.md`.

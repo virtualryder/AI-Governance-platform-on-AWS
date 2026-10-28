@@ -1,4 +1,5 @@
 import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as kms from 'aws-cdk-lib/aws-kms';
 import * as bac from 'aws-cdk-lib/aws-bedrockagentcore';
 import { Construct } from 'constructs';
 import { PlatformStack, PlatformStackProps } from './platform-stack';
@@ -7,6 +8,7 @@ import { AgentGateway } from '../constructs/agent-gateway';
 import { AgentMemory } from '../constructs/agent-memory';
 import { AgentTools } from '../constructs/agent-tools';
 import { AgentRuntime } from '../constructs/agent-runtime';
+import { GatewayInterceptor } from '../constructs/gateway-interceptor';
 import { Observability } from '../constructs/observability';
 import { applyAgentPlatformNagSuppressions } from './agent-platform-nag-suppressions';
 
@@ -21,6 +23,7 @@ export class AgentPlatformStack extends PlatformStack {
   readonly memory?: AgentMemory;
   readonly tools: AgentTools;
   readonly runtime?: AgentRuntime;
+  readonly interceptor?: GatewayInterceptor;
 
   constructor(scope: Construct, id: string, props: PlatformStackProps) {
     super(scope, id, props);
@@ -36,7 +39,20 @@ export class AgentPlatformStack extends PlatformStack {
       name: `govai-${this.config.customerName}-${this.config.environment}`,
     });
 
-    this.gateway = new AgentGateway(this, 'Gateway', { config: this.config, identity: this.identity, kmsKeyArn });
+    // Per-user governance interceptor (attached to the gateway at creation when enabled).
+    if (this.config.controls.perUserGovernance?.enabled) {
+      this.interceptor = new GatewayInterceptor(this, 'Interceptor', {
+        config: this.config,
+        encryptionKey: kms.Key.fromKeyArn(this, 'InterceptorKey', kmsKeyArn),
+      });
+    }
+
+    this.gateway = new AgentGateway(this, 'Gateway', {
+      config: this.config,
+      identity: this.identity,
+      kmsKeyArn,
+      interceptorLambdaArn: this.interceptor?.fn.functionArn,
+    });
 
     if (ac.enableMemory) {
       this.memory = new AgentMemory(this, 'Memory', { config: this.config, kmsKeyArn });
@@ -69,9 +85,12 @@ export class AgentPlatformStack extends PlatformStack {
     this.publish('agent-platform/workload-identity-arn', workloadIdentity.attrWorkloadIdentityArn, 'Agent workload identity ARN');
     this.publish('agent-platform/idp-discovery-url', this.identity.discoveryUrl, 'Inbound IdP OIDC discovery URL');
     if (this.memory) this.publish('agent-platform/memory-id', this.memory.memoryId, 'AgentCore memory ID');
+    if (this.interceptor) {
+      this.publish('agent-platform/interceptor-ledger', this.interceptor.ledger.tableName, 'Per-user governance ledger table');
+    }
     if (this.runtime) this.publish('agent-platform/runtime-arn', this.runtime.runtimeArn, 'AgentCore runtime ARN');
     this.publish('agent-platform/version', '0.2.0', 'AgentPlatform stack version');
 
-    applyAgentPlatformNagSuppressions(this);
+    applyAgentPlatformNagSuppressions(this, { hasInterceptor: !!this.interceptor });
   }
 }

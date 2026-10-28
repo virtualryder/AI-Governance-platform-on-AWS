@@ -12,6 +12,8 @@ export interface AgentGatewayProps {
   identity: InboundIdentity;
   /** Evidence CMK ARN (imported from the baseline stack) for gateway + policy-engine encryption. */
   kmsKeyArn: string;
+  /** Optional per-user REQUEST interceptor Lambda ARN to attach at gateway creation. */
+  interceptorLambdaArn?: string;
 }
 
 /**
@@ -28,7 +30,7 @@ export class AgentGateway extends Construct {
 
   constructor(scope: Construct, id: string, props: AgentGatewayProps) {
     super(scope, id);
-    const { config, identity, kmsKeyArn } = props;
+    const { config, identity, kmsKeyArn, interceptorLambdaArn } = props;
     const name = `govai-${config.customerName}-${config.environment}`;
     // PolicyEngine/Policy names must match ^[A-Za-z][A-Za-z0-9_]*$ (underscores, no hyphens).
     const safe = `govai_${config.customerName.replace(/-/g, '_')}_${config.environment}`;
@@ -74,6 +76,18 @@ export class AgentGateway extends Construct {
       }),
     );
 
+    // Per-user REQUEST interceptor: the gateway assumes its role to invoke the interceptor Lambda.
+    // passRequestHeaders=true so the interceptor can read the inbound JWT (required for per-user governance).
+    if (interceptorLambdaArn) {
+      this.role.addToPolicy(
+        new iam.PolicyStatement({
+          sid: 'InvokeInterceptor',
+          actions: ['lambda:InvokeFunction'],
+          resources: [interceptorLambdaArn],
+        }),
+      );
+    }
+
     const allowedClients = identity.allowedClients.length ? identity.allowedClients : undefined;
     this.gateway = new bac.CfnGateway(this, 'Gateway', {
       name: `${name}-gw`,
@@ -92,6 +106,15 @@ export class AgentGateway extends Construct {
         arn: this.policyEngine.attrPolicyEngineArn,
         mode: config.agentcore.cedarMode ?? 'LOG_ONLY',
       },
+      interceptorConfigurations: interceptorLambdaArn
+        ? [
+            {
+              interceptor: { lambda: { arn: interceptorLambdaArn } },
+              interceptionPoints: ['REQUEST'],
+              inputConfiguration: { passRequestHeaders: true },
+            },
+          ]
+        : undefined,
     });
     this.gateway.addDependency(this.policyEngine);
     // Ensure the role AND its inline policy exist before the gateway (which assumes the role to call

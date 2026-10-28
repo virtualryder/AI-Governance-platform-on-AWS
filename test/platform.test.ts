@@ -170,3 +170,23 @@ test('controls: HITL omitted when disabled', () => {
   });
   t.resourceCountIs('AWS::StepFunctions::StateMachine', 0);
 });
+
+test('per-user interceptor: ledger + REQUEST interceptor attached when enabled', () => {
+  const t = agentPlatformTemplate((c) => {
+    c.controls.perUserGovernance = { enabled: true, ratePerMinute: 60 };
+  });
+  // CMK-encrypted ledger with TTL.
+  t.hasResourceProperties('AWS::DynamoDB::Table', {
+    SSESpecification: Match.objectLike({ SSEEnabled: true }),
+    TimeToLiveSpecification: { AttributeName: 'ttl', Enabled: true },
+  });
+  // Interceptor attached to the gateway at REQUEST with headers passed (for JWT).
+  t.hasResourceProperties('AWS::BedrockAgentCore::Gateway', {
+    InterceptorConfigurations: Match.arrayWith([
+      Match.objectLike({
+        InterceptionPoints: ['REQUEST'],
+        InputConfiguration: { PassRequestHeaders: true },
+      }),
+    ]),
+  });
+});

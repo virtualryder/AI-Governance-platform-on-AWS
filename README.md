@@ -53,7 +53,9 @@ Copy `config/platform.example.json` to `config/<customer>.json` for each custome
 
 ## Status
 Steps 1–3 complete and **deployed + verified on live AWS** (governance baseline + AgentCore layer:
-Cognito JWT, MCP gateway + Cedar policy engine, memory, tools, observability). Step 4 (controls)
-slice 1 done — Cedar forbid-all kill switch, HITL `waitForTaskToken`, budgets + alerts. All four
-modes synth, 11 tests green, cdk-nag clean. Remaining: step 4 slice 2 (per-user interceptor, rate
-limits, Service Catalog), step 5 (hub/org), step 6 (use-case harness + citizen-311). See `CLAUDE.md`.
+Cognito JWT, MCP gateway + Cedar policy engine, memory, tools, observability). Step 4 (controls) done
+for standalone/spoke — Cedar forbid-all kill switch, HITL `waitForTaskToken`, budgets + alerts, and a
+per-user Gateway interceptor + DynamoDB ledger (block / model-allowlist-by-group / rate limit). All
+four modes synth, 12 tests green, cdk-nag clean (both the default and interceptor-enabled paths).
+Remaining: step 5 (hub/org, incl. Service Catalog + Guard hooks), step 6 (use-case harness +
+citizen-311). See `CLAUDE.md`.

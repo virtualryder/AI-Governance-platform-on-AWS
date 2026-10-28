@@ -57,5 +57,7 @@ Cognito JWT, MCP gateway + Cedar policy engine, memory, tools, observability). S
 for standalone/spoke — Cedar forbid-all kill switch, HITL `waitForTaskToken`, budgets + alerts, and a
 per-user Gateway interceptor + DynamoDB ledger (block / model-allowlist-by-group / rate limit). All
 four modes synth, 12 tests green, cdk-nag clean (both the default and interceptor-enabled paths).
-Remaining: step 5 (hub/org, incl. Service Catalog + Guard hooks), step 6 (use-case harness +
-citizen-311). See `CLAUDE.md`.
+Step 5 (hub/org) in progress — org SCPs + SCP-exempt deployer role, and the governance hub's central
+WORM log archive + OAM cross-account sink are in; remaining: Bedrock org declarative policy, Guard
+hooks (StackSets), Agent Registry, Service Catalog. Step 6 (Strands harness + citizen-311) is next.
+See `CLAUDE.md`.

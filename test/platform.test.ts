@@ -5,6 +5,7 @@ import { GovernanceBaselineStack } from '../lib/stacks/governance-baseline-stack
 import { AgentPlatformStack } from '../lib/stacks/agent-platform-stack';
 import { ControlsStack } from '../lib/stacks/controls-stack';
 import { OrgFoundationStack } from '../lib/stacks/org-foundation-stack';
+import { GovernanceHubStack } from '../lib/stacks/governance-hub-stack';
 
 const config = loadConfig('config/platform.example.json');
 
@@ -170,6 +171,21 @@ test('controls: HITL omitted when disabled', () => {
     c.controls.humanInTheLoop = false;
   });
   t.resourceCountIs('AWS::StepFunctions::StateMachine', 0);
+});
+
+test('governance hub: central log archive + OAM sink in hub mode; collapsed in standalone', () => {
+  const app = new App();
+  const hub = Template.fromStack(
+    new GovernanceHubStack(app, 'HUB', { config, mode: 'hub', env: { region: config.region } }),
+  );
+  hub.resourceCountIs('AWS::Oam::Sink', 1);
+  hub.hasResourceProperties('AWS::S3::Bucket', { ObjectLockEnabled: true }); // WORM log archive
+  hub.resourceCountIs('AWS::KMS::Key', 1);
+
+  const collapsed = Template.fromStack(
+    new GovernanceHubStack(new App(), 'HUBC', { config, mode: 'standalone', env: { region: config.region } }),
+  );
+  collapsed.resourceCountIs('AWS::Oam::Sink', 0); // baseline provides evidence; no cross-account sink
 });
 
 test('org foundation: lifted SCPs + SCP-exempt deployer role', () => {

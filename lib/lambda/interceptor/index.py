@@ -9,10 +9,9 @@ Stages (per PORT-MAP sample-per-user-governance): block -> model allowlist by gr
 limit (token bucket in DynamoDB). Token/USD budgets + auto-downgrade are RESPONSE-side extensions
 (they need the tool/model usage counts in the response) and are noted for slice-2b.
 
-NOTE: the allow/deny OUTPUT envelope is the documented request-interceptor shape (passthrough returns
-the request under mcp.gatewayRequest; deny returns mcp.gatewayResponse with an MCP error). Validate the
-exact envelope against the current AWS interceptor docs before production enforcement. This Lambda
-deploys regardless; contract mismatches surface at invocation, not deploy.
+OUTPUT envelope (grounded against AWS docs): every response carries interceptorOutputVersion "1.0".
+Allow/passthrough returns mcp.transformedGatewayRequest (the possibly-modified request); deny returns
+mcp.transformedGatewayResponse (the gateway replies with it immediately).
 """
 import base64
 import json
@@ -45,14 +44,16 @@ def _claims(headers):
 
 
 def _deny(req_id, message):
+    # transformedGatewayResponse short-circuits the gateway with this reply (deny-by-interceptor).
     return {
+        "interceptorOutputVersion": "1.0",
         "mcp": {
-            "gatewayResponse": {
+            "transformedGatewayResponse": {
                 "statusCode": 403,
                 "headers": {"Content-Type": "application/json"},
                 "body": {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32001, "message": message}},
             }
-        }
+        },
     }
 
 
@@ -73,8 +74,8 @@ def handler(event, _context):
     if blocked:
         return _deny(req_id, "User is blocked by governance policy.")
 
-    # 2. Model allowlist by Cognito group (if the tool call names a model family).
-    if ALLOWED_BY_GROUP:
+    # 2. Model allowlist by Cognito group — only on actual tool calls (let initialize/tools/list pass).
+    if ALLOWED_BY_GROUP and body.get("method") == "tools/call":
         allowed = {m for g in groups for m in ALLOWED_BY_GROUP.get(g, [])}
         requested = json.dumps(body.get("params", {}))
         if allowed and not any(fam in requested for fam in allowed):
@@ -96,5 +97,5 @@ def handler(event, _context):
         if int(result["Attributes"]["count"]["N"]) > RATE_PER_MINUTE:
             return _deny(req_id, "Per-user rate limit exceeded. Try again shortly.")
 
-    # Allow: pass the request through unchanged.
-    return {"mcp": {"gatewayRequest": gateway_request}}
+    # Allow: pass the request through unchanged (transformedGatewayRequest carries the request body).
+    return {"interceptorOutputVersion": "1.0", "mcp": {"transformedGatewayRequest": {"body": body}}}

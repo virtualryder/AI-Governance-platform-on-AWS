@@ -91,6 +91,6 @@ export class AgentPlatformStack extends PlatformStack {
     if (this.runtime) this.publish('agent-platform/runtime-arn', this.runtime.runtimeArn, 'AgentCore runtime ARN');
     this.publish('agent-platform/version', '0.2.0', 'AgentPlatform stack version');
 
-    applyAgentPlatformNagSuppressions(this, { hasInterceptor: !!this.interceptor });
+    applyAgentPlatformNagSuppressions(this, { hasInterceptor: !!this.interceptor, hasRuntime: !!this.runtime });
   }
 }

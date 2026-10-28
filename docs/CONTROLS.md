@@ -63,7 +63,7 @@ Controls not yet listed are design targets realized in later steps.
 | E4 | Budgets + alerts | AWS Budgets + SNS notifications | L2 | S,P | `monthlyBudgetUsd`, `budgetAlertEmails` |
 | E5 | Gateway rate limit | AgentCore GatewayRateLimit | L1 | S,P | `gatewayRequestsPerMinute` |
 | E6 | Human-in-the-loop | Step Functions (InvokeHarness + `waitForTaskToken`) | L2 | S,P | `humanInTheLoop` toggle |
-| E7 | Per-user Gateway governance | Gateway REQUEST interceptor Lambda + single-table DynamoDB ledger | L2+Custom | S,P | Port from `sample-per-user-governance-...`: per-user block, model allowlist (Cognito group), rate limit, token/USD budget, auto-downgrade to fallback; `controls.perUserGovernance` |
+| E7 | Per-user Gateway governance | Gateway REQUEST interceptor Lambda + single-table DynamoDB ledger | L2+Custom | S,P | Per-user block, model allowlist (Cognito group), rate limit; token/USD budget + auto-downgrade are RESPONSE-side follow-ups. `controls.perUserGovernance`. **Interceptor I/O contract (live-validated):** input `mcp.gatewayRequest` (JWT in Authorization header, needs `passRequestHeaders`); output `interceptorOutputVersion:"1.0"` + `mcp.transformedGatewayRequest` (allow) or `transformedGatewayResponse` (deny). |
 
 ## F. Change control & distribution
 

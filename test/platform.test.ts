@@ -212,6 +212,17 @@ test('org foundation: Bedrock declarative org policy when a guardrail floor is c
   t.resourceCountIs('AWS::Organizations::Policy', 3);
 });
 
+test('org foundation: proactive Guard Hook (WARN) over resource + stack ops', () => {
+  const t = Template.fromStack(
+    new OrgFoundationStack(new App(), 'ORGG', { config, mode: 'org', env: { region: config.region } }),
+  );
+  t.hasResourceProperties('AWS::CloudFormation::GuardHook', {
+    HookStatus: 'ENABLED',
+    FailureMode: 'WARN',
+    TargetOperations: Match.arrayWith(['RESOURCE', 'STACK']),
+  });
+});
+
 test('per-user interceptor: ledger + REQUEST interceptor attached when enabled', () => {
   const t = agentPlatformTemplate((c) => {
     c.controls.perUserGovernance = { enabled: true, ratePerMinute: 60 };

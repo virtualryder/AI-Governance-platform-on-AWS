@@ -1,0 +1,30 @@
+# Governed-AI platform baseline — CloudFormation Guard rules enforced proactively at deploy time by
+# an AWS::CloudFormation::GuardHook (create/update). Mirrors the platform's security defaults so that
+# resources deployed into a governed account (by anyone, not just this CDK app) meet the floor.
+# Evaluated by the Guard Hook at deploy time; not exercised by cdk synth/nag.
+
+let s3_buckets = Resources.*[ Type == 'AWS::S3::Bucket' ]
+rule s3_buckets_private_and_encrypted when %s3_buckets !empty {
+  %s3_buckets {
+    Properties.BucketEncryption exists
+    Properties.PublicAccessBlockConfiguration.BlockPublicAcls == true
+    Properties.PublicAccessBlockConfiguration.IgnorePublicAcls == true
+    Properties.PublicAccessBlockConfiguration.BlockPublicPolicy == true
+    Properties.PublicAccessBlockConfiguration.RestrictPublicBuckets == true
+  }
+}
+
+let guardrails = Resources.*[ Type == 'AWS::Bedrock::Guardrail' ]
+rule bedrock_guardrails_cmk_encrypted when %guardrails !empty {
+  %guardrails {
+    Properties.KmsKeyArn exists
+  }
+}
+
+let gateways = Resources.*[ Type == 'AWS::BedrockAgentCore::Gateway' ]
+rule agentcore_gateways_jwt_and_cmk when %gateways !empty {
+  %gateways {
+    Properties.AuthorizerType == 'CUSTOM_JWT'
+    Properties.KmsKeyArn exists
+  }
+}

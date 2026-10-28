@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as organizations from 'aws-cdk-lib/aws-organizations';
+import * as budgets from 'aws-cdk-lib/aws-budgets';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 import { PlatformConfig } from '../config/platform-config';
@@ -101,5 +102,58 @@ export class OrgPolicies extends Construct {
         resources: ['*'],
       }),
     );
+
+    // Cost kill switch: a detached "freeze" SCP that denies ALL Bedrock inference, attached to the
+    // Agentic OU automatically by a Budgets action when monthly spend crosses 100%. The SCP exempts
+    // the deployer role so remediation is still possible.
+    const freezeScp = new organizations.CfnPolicy(this, 'CostFreezeScp', {
+      name: `govai-${config.customerName}-cost-freeze`,
+      description: 'Budget-triggered freeze: deny all Bedrock inference org-wide until lifted.',
+      type: 'SERVICE_CONTROL_POLICY',
+      content: {
+        Version: '2012-10-17',
+        Statement: [
+          {
+            Sid: 'FreezeBedrockInference',
+            Effect: 'Deny',
+            Action: ['bedrock:InvokeModel*', 'bedrock:Converse*', 'bedrock:InvokeAgent', 'bedrock:InvokeFlow'],
+            Resource: '*',
+            Condition: { ArnNotLike: { 'aws:PrincipalArn': [`arn:aws:iam::*:role/${deployerRole}`] } },
+          },
+        ],
+      },
+    });
+
+    if (org.agenticOuId) {
+      const budget = new budgets.CfnBudget(this, 'CostBudget', {
+        budget: {
+          budgetName: `govai-${config.customerName}-org`,
+          budgetType: 'COST',
+          timeUnit: 'MONTHLY',
+          budgetLimit: { amount: config.controls.monthlyBudgetUsd, unit: 'USD' },
+        },
+      });
+      const actionRole = new iam.Role(this, 'BudgetActionRole', {
+        assumedBy: new iam.ServicePrincipal('budgets.amazonaws.com'),
+        description: 'Budgets assumes this to attach the cost-freeze SCP at threshold.',
+      });
+      actionRole.addToPolicy(
+        new iam.PolicyStatement({
+          actions: ['organizations:AttachPolicy', 'organizations:DetachPolicy'],
+          resources: ['*'],
+        }),
+      );
+      const action = new budgets.CfnBudgetsAction(this, 'CostFreezeAction', {
+        budgetName: `govai-${config.customerName}-org`,
+        notificationType: 'ACTUAL',
+        actionType: 'APPLY_SCP_POLICY',
+        actionThreshold: { value: 100, type: 'PERCENTAGE' },
+        approvalModel: 'AUTOMATIC',
+        executionRoleArn: actionRole.roleArn,
+        definition: { scpActionDefinition: { policyId: freezeScp.attrId, targetIds: [org.agenticOuId] } },
+        subscribers: config.controls.budgetAlertEmails.map((address) => ({ type: 'EMAIL', address })),
+      });
+      action.addDependency(budget);
+    }
   }
 }

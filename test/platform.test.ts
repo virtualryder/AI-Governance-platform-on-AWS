@@ -193,7 +193,8 @@ test('org foundation: lifted SCPs + SCP-exempt deployer role', () => {
   const stack = new OrgFoundationStack(app, 'ORG', { config, mode: 'org', env: { region: config.region } });
   const t = Template.fromStack(stack);
   // Two service control policies (inference perimeter + control-plane integrity).
-  t.resourceCountIs('AWS::Organizations::Policy', 2);
+  // inference-perimeter + control-plane-integrity + cost-freeze (detached until a budget trips it).
+  t.resourceCountIs('AWS::Organizations::Policy', 3);
   t.hasResourceProperties('AWS::Organizations::Policy', { Type: 'SERVICE_CONTROL_POLICY' });
   // The SCP-exempt deployer role (names derive from customerName when org config omits them).
   t.hasResourceProperties('AWS::IAM::Role', {
@@ -208,8 +209,20 @@ test('org foundation: Bedrock declarative org policy when a guardrail floor is c
     new OrgFoundationStack(new App(), 'ORGB', { config: c, mode: 'org', env: { region: c.region } }),
   );
   t.hasResourceProperties('AWS::Organizations::Policy', { Type: 'BEDROCK_POLICY' });
-  // 2 SCPs + 1 Bedrock declarative policy.
-  t.resourceCountIs('AWS::Organizations::Policy', 3);
+  // 3 SCPs (inference, control-plane, cost-freeze) + 1 Bedrock declarative policy.
+  t.resourceCountIs('AWS::Organizations::Policy', 4);
+});
+
+test('org foundation: Budgets cost kill switch applies the freeze SCP at threshold', () => {
+  const c = JSON.parse(JSON.stringify(config)) as PlatformConfig;
+  c.org = { agenticOuId: 'ou-abcd-12345678' };
+  const t = Template.fromStack(
+    new OrgFoundationStack(new App(), 'ORGC', { config: c, mode: 'org', env: { region: c.region } }),
+  );
+  t.hasResourceProperties('AWS::Budgets::BudgetsAction', {
+    ActionType: 'APPLY_SCP_POLICY',
+    ActionThreshold: { Value: 100, Type: 'PERCENTAGE' },
+  });
 });
 
 test('org foundation: proactive Guard Hook (WARN) over resource + stack ops', () => {

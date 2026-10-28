@@ -23,4 +23,16 @@ export function applyHubNagSuppressions(stack: Stack): void {
         'a platform default; durability relies on S3 + versioning + Object Lock.',
     },
   ]);
+
+  // Service Catalog "governed workspace" product bucket (reference self-service starter). It ships
+  // CMK + BPA + TLS + versioning; the provisioning team adds access logging/replication for its use case.
+  NagSuppressions.addResourceSuppressionsByPath(
+    stack,
+    `${sid}/Catalog/GovernedWorkspaceStack/Workspace/Resource`,
+    [
+      { id: 'AwsSolutions-S1', reason: 'Self-service starter workspace; access logging is added by the provisioning team per use case.' },
+      { id: 'HIPAA.Security-S3BucketLoggingEnabled', reason: 'Starter workspace; access logging configured by the provisioning team.' },
+      { id: 'HIPAA.Security-S3BucketReplicationEnabled', reason: 'Starter workspace; replication is a per-use-case DR decision at provisioning time.' },
+    ],
+  );
 }

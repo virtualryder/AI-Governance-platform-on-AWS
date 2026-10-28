@@ -180,7 +180,9 @@ test('governance hub: central log archive + OAM sink in hub mode; collapsed in s
   );
   hub.resourceCountIs('AWS::Oam::Sink', 1);
   hub.hasResourceProperties('AWS::S3::Bucket', { ObjectLockEnabled: true }); // WORM log archive
-  hub.resourceCountIs('AWS::KMS::Key', 1);
+  // Service Catalog self-service portfolio + product.
+  hub.resourceCountIs('AWS::ServiceCatalog::Portfolio', 1);
+  hub.resourceCountIs('AWS::ServiceCatalog::CloudFormationProduct', 1);
 
   const collapsed = Template.fromStack(
     new GovernanceHubStack(new App(), 'HUBC', { config, mode: 'standalone', env: { region: config.region } }),

@@ -1,5 +1,11 @@
 # Deployment Runbooks
 
+👉 **[DEPLOYMENT.md](DEPLOYMENT.md) is the comprehensive SA + customer runbook** — decision tree,
+architecture diagrams, the pre-deployment customer questionnaire, step-by-step per mode, use-case /
+Runtime activation, cost, teardown, and a troubleshooting table of real live-deploy gotchas. Start there.
+
+The per-method files below are quick references:
+
 One runbook per deployment method. Pick by the customer's situation:
 
 | Method | When | Target account | Stacks |

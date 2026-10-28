@@ -86,6 +86,14 @@ export interface PlatformConfig {
     controlTower?: ControlTowerMode;
     managementAccountId?: string;
     agenticOuId?: string;
+    /** SCP-exempt deployer role name (the kingpin the lifted SCPs reference). Default derived from customerName. */
+    deployerRoleName?: string;
+    /** Name prefix for governed agent roles the inference-perimeter SCP allows. Default `govai-<customer>-governed`. */
+    governedRolePrefix?: string;
+    /** Evidence bucket name prefix the control-plane-integrity SCP protects. Default `govai-<customer>`. */
+    evidenceBucketPrefix?: string;
+    /** Guardrail ARN(:version) the Bedrock org declarative policy pins as the org floor. */
+    orgGuardrailArn?: string;
   };
   /** Multi-account topology. 'centralized' (default) keeps shared services + workloads together;
    * 'distributed'/'federated' add workload accounts and (federated) cross-account OAuth trust. */

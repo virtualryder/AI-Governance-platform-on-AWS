@@ -10,7 +10,8 @@ Legend — Modes: **S**=standalone · **P**=spoke · **H**=hub · **O**=org.
 - **Step 2 (baseline, deployed+verified on AWS):** A1, A2, A3, A4, B1, B2.
 - **Step 3 (agent platform, deployed+verified on AWS):** C1, C2, C3, C5 (engine + per-gateway Cedar; `LOG_ONLY` default), D2, G1, G2, G3.
 - **Step 4 (controls, synth+nag+tests green; per-user path nag-verified via sa-test):** E1 (Cedar forbid-all kill switch, Lambda-driven), E4 (budgets + alerts), E6 (HITL `waitForTaskToken`), E7 (per-user interceptor + ledger: per-user block, model allowlist by Cognito group, rate limit; token/USD budget + auto-downgrade are RESPONSE-side extensions). E5 (gateway rate limit) stays per-use-case — `CfnGatewayRateLimit` keys on specific dimension values, so blanket RPM lives in the E7 interceptor.
-- **Step 5 (hub/org, not started):** A5, B3, B4, D3, D4, E2, E3, F1–F4 (Guard hooks, Service Catalog, Registry), H3, SRA detective rules.
+- **Step 5 slice A (org foundation, synth+nag+tests green):** org SCPs — AI inference perimeter (B4-adjacent: deny Bedrock inference outside governed roles) + control-plane integrity (protect invocation logging, AgentCore/guardrail control plane, evidence vaults), both lifted from the Aegis baseline and parameterized; the SCP-exempt platform deployer role (the kingpin every SCP exempts). E2 (broad SCP kill switch) is satisfied by these perimeters.
+- **Step 5 remaining (hub/org):** A5, B3, D3, D4, E3, F1–F4 (Guard hooks via StackSets, Service Catalog, Registry + RAM), H3, OAM + log archive, Bedrock org declarative policy, SRA detective rules.
 Controls not yet listed are design targets realized in later steps.
 
 ## A. Evidence & audit (per-account baseline)

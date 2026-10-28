@@ -4,6 +4,7 @@ import { loadConfig, PlatformConfig } from '../lib/config/platform-config';
 import { GovernanceBaselineStack } from '../lib/stacks/governance-baseline-stack';
 import { AgentPlatformStack } from '../lib/stacks/agent-platform-stack';
 import { ControlsStack } from '../lib/stacks/controls-stack';
+import { OrgFoundationStack } from '../lib/stacks/org-foundation-stack';
 
 const config = loadConfig('config/platform.example.json');
 
@@ -169,6 +170,19 @@ test('controls: HITL omitted when disabled', () => {
     c.controls.humanInTheLoop = false;
   });
   t.resourceCountIs('AWS::StepFunctions::StateMachine', 0);
+});
+
+test('org foundation: lifted SCPs + SCP-exempt deployer role', () => {
+  const app = new App();
+  const stack = new OrgFoundationStack(app, 'ORG', { config, mode: 'org', env: { region: config.region } });
+  const t = Template.fromStack(stack);
+  // Two service control policies (inference perimeter + control-plane integrity).
+  t.resourceCountIs('AWS::Organizations::Policy', 2);
+  t.hasResourceProperties('AWS::Organizations::Policy', { Type: 'SERVICE_CONTROL_POLICY' });
+  // The SCP-exempt deployer role (names derive from customerName when org config omits them).
+  t.hasResourceProperties('AWS::IAM::Role', {
+    RoleName: 'govai-example-state-agency-platform-deployer',
+  });
 });
 
 test('per-user interceptor: ledger + REQUEST interceptor attached when enabled', () => {

@@ -1,0 +1,70 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ProtectInvocationLogging",
+      "Effect": "Deny",
+      "Action": [
+        "bedrock:PutModelInvocationLoggingConfiguration",
+        "bedrock:DeleteModelInvocationLoggingConfiguration"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "ArnNotLike": {
+          "aws:PrincipalArn": [
+            "arn:aws:iam::*:role/{{DEPLOYER_ROLE}}",
+            "arn:aws:iam::*:role/AWSControlTowerExecution",
+            "arn:aws:iam::*:role/stacksets-exec-*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "ProtectGovernanceControlPlane",
+      "Effect": "Deny",
+      "Action": [
+        "bedrock-agentcore:UpdateGateway",
+        "bedrock-agentcore:DeleteGateway",
+        "bedrock-agentcore:DeleteGatewayTarget",
+        "bedrock-agentcore:DeletePolicyEngine",
+        "bedrock-agentcore:UpdatePolicyEngine",
+        "bedrock-agentcore:CreatePolicy",
+        "bedrock-agentcore:UpdatePolicy",
+        "bedrock-agentcore:DeletePolicy",
+        "bedrock:DeleteGuardrail",
+        "bedrock:UpdateGuardrail"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "ArnNotLike": {
+          "aws:PrincipalArn": [
+            "arn:aws:iam::*:role/{{DEPLOYER_ROLE}}",
+            "arn:aws:iam::*:role/AWSControlTowerExecution",
+            "arn:aws:iam::*:role/stacksets-exec-*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "ProtectEvidenceVaults",
+      "Effect": "Deny",
+      "Action": [
+        "s3:PutBucketObjectLockConfiguration",
+        "s3:DeleteBucket",
+        "s3:PutBucketPolicy",
+        "s3:DeleteBucketPolicy",
+        "s3:PutLifecycleConfiguration"
+      ],
+      "Resource": "arn:aws:s3:::{{EVIDENCE_PREFIX}}-*",
+      "Condition": {
+        "ArnNotLike": {
+          "aws:PrincipalArn": [
+            "arn:aws:iam::*:role/{{DEPLOYER_ROLE}}",
+            "arn:aws:iam::*:role/AWSControlTowerExecution",
+            "arn:aws:iam::*:role/stacksets-exec-*"
+          ]
+        }
+      }
+    }
+  ]
+}

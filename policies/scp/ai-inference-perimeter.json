@@ -1,0 +1,52 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyUngovernedBedrockInference",
+      "Effect": "Deny",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream",
+        "bedrock:InvokeAgent",
+        "bedrock:InvokeInlineAgent",
+        "bedrock:InvokeFlow",
+        "bedrock:Retrieve",
+        "bedrock:RetrieveAndGenerate",
+        "bedrock:StartAsyncInvoke",
+        "bedrock:CreateModelInvocationJob"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "ArnNotLike": {
+          "aws:PrincipalArn": ["arn:aws:iam::*:role/{{GOVERNED_PREFIX}}-*"]
+        }
+      }
+    },
+    {
+      "Sid": "ProtectGovernedRoles",
+      "Effect": "Deny",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:UpdateRole",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:PutRolePermissionsBoundary",
+        "iam:DeleteRolePermissionsBoundary"
+      ],
+      "Resource": "arn:aws:iam::*:role/{{GOVERNED_PREFIX}}-*",
+      "Condition": {
+        "ArnNotLike": {
+          "aws:PrincipalArn": [
+            "arn:aws:iam::*:role/{{DEPLOYER_ROLE}}",
+            "arn:aws:iam::*:role/AWSControlTowerExecution",
+            "arn:aws:iam::*:role/stacksets-exec-*"
+          ]
+        }
+      }
+    }
+  ]
+}

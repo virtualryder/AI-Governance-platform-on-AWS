@@ -127,8 +127,10 @@ export interface PlatformConfig {
     enableObservability?: boolean;
     /** Percentage of spans indexed from CloudWatch Logs to X-Ray (cost control). Defaults to 5. */
     observabilityIndexingPercentage?: number;
-    /** Attach the rendered baseline Cedar policies to the gateway's policy engine. Defaults to true.
-     * Tool-specific policies are added by the use-case once the gateway's tool schema exists. */
+    /** Attach the rendered baseline Cedar policies to the gateway's policy engine. Defaults to
+     * FALSE: AgentCore's automated reasoning rejects a blanket permit over "any future tools", and
+     * deny-by-default already governs an empty gateway. Opt in only once tool-scoped policies the
+     * engine will accept exist (the use-case renders them). */
     attachBaselineCedarPolicies?: boolean;
   };
   controls: {

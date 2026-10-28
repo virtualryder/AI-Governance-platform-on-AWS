@@ -97,7 +97,8 @@ test('agent platform: MCP gateway with CUSTOM_JWT, Cedar engine, memory, browser
     PolicyEngineConfiguration: Match.objectLike({ Mode: 'LOG_ONLY' }),
   });
   t.resourceCountIs('AWS::BedrockAgentCore::PolicyEngine', 1);
-  t.resourceCountIs('AWS::BedrockAgentCore::Policy', 1); // baseline Cedar, rendered per gateway
+  // Baseline Cedar is NOT attached by default (AgentCore rejects a blanket permit; tools come later).
+  t.resourceCountIs('AWS::BedrockAgentCore::Policy', 0);
   t.resourceCountIs('AWS::BedrockAgentCore::Memory', 1); // example enables memory
   t.resourceCountIs('AWS::BedrockAgentCore::BrowserCustom', 1);
   t.resourceCountIs('AWS::XRay::TransactionSearchConfig', 1);
@@ -128,4 +129,11 @@ test('agent platform: runtime + endpoint only when an image is configured', () =
   withImage.resourceCountIs('AWS::BedrockAgentCore::Runtime', 1);
   withImage.resourceCountIs('AWS::BedrockAgentCore::RuntimeEndpoint', 1);
   withImage.resourceCountIs('AWS::BedrockAgentCore::CodeInterpreterCustom', 1);
+});
+
+test('agent platform: baseline Cedar attaches only when explicitly opted in', () => {
+  const t = agentPlatformTemplate((c) => {
+    c.agentcore.attachBaselineCedarPolicies = true;
+  });
+  t.resourceCountIs('AWS::BedrockAgentCore::Policy', 1);
 });

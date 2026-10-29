@@ -1,5 +1,22 @@
 # Readiness-review remediation (findings → fixes)
 
+**Final status (two reviews + live re-validation).** All findings from both reviews are remediated in
+code (43 jest + 20 pytest green; cdk-nag clean across standalone/spoke/hub/org). Validation maturity:
+
+- **Standalone** — **live verified** post-fix in a real account (acceptance matrix below): authorized /
+  unauthorized / lookalike access, guarded inference, HITL approve + reject + replay, kill-switch
+  engage/release, no standalone hub leak, logging create+restore. *Release accepted* still needs a
+  second-operator run of the §15 gate.
+- **Hub/spoke, Org, optional (A2A / VPC / Memory / Omni)** — **built + synth/nag/test-verified**, not
+  yet live-validated (need multi-account / test-OU / VPC / second-agent / Omni-domain environments).
+- **Not live-exercised anywhere (unit-tested only):** executor FunctionError→FAILED and
+  transport→UNKNOWN, kill-switch CREATE_FAILED→not-engaged, expired/wrong-client tokens.
+
+Avoid describing the platform as production-ready, universally deployable, exactly-once, or fully
+A2A-enabled on the current evidence.
+
+---
+
 ## Second review (commit `c18c586`, 29 Oct 2026) — standalone MVP blockers
 
 A second review focused on the standalone MVP + SA handoff. Maturity labels: **implemented** (builds,

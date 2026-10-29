@@ -64,9 +64,10 @@ npx cdk deploy --all -c mode=standalone -c configFile=config/<customer>.json --p
 
 ## Develop
 ```powershell
-npm install
+npm ci
 npm run build              # type-check
-npm test                   # template assertions (jest)
+npm test                   # template assertions (jest) — needs Docker (kill-switch Lambda bundles boto3)
+python -m pip install -r requirements-dev.txt && npm run test:lambda   # behavioral control-handler tests
 npm run synth:standalone   # (also :hub :spoke :org)
 npm run nag                # cdk-nag AwsSolutions + HIPAA packs
 ```
@@ -80,6 +81,14 @@ Copy `config/platform.example.json` to `config/<customer>.json` for each custome
 This is a **governance accelerator undergoing a defined hardening + validation phase** — not a
 production-certified, four-mode product. Two independent readiness reviews (29 Oct 2026) drove the
 current state; their findings and fixes are tracked in [`docs/REMEDIATION.md`](docs/REMEDIATION.md).
+
+> **Current status:** both reviews' findings are remediated in code. The **standalone** mode is
+> **live-verified** end to end against real AWS (authorized/unauthorized/lookalike access, guarded
+> inference, HITL approve + reject + replay, kill-switch engage/release) — the remaining step to
+> *release accepted* is a second-operator reproduction of the §15 acceptance gate. Hub/spoke, org, and
+> optional A2A/VPC/Memory/Omni are **built + verified but not yet live-validated** (they need
+> multi-account / VPC / second-agent environments). Not production-ready, not "exactly-once", not fully
+> A2A-enabled on current evidence.
 Rather than a blanket "all addressed", each capability carries one of four honest labels:
 
 - **implemented** — code exists, builds, `cdk-nag`-clean.
@@ -111,7 +120,7 @@ infrastructure exists. Per-capability detail:
 
 | Capability | Status | Notes |
 |---|---|---|
-| CDK build / 4-mode synth / cdk-nag | **Live-tested** (local) | 41 jest + 17 pytest green; nag clean ×4 modes |
+| CDK build / 4-mode synth / cdk-nag | **Live-tested** (local) | 43 jest + 20 pytest green; nag clean ×4 modes |
 | Standalone foundation (baseline + platform + controls) | **Live-tested** (2026-10-29) | deployed to a real account; enforcing Cedar, guardrail pinned to runtime, HITL end-to-end, safe logging ownership — all exercised live |
 | citizen-311 governed workflow | **Live-validated** (post-fix) | full workflow run in-account: authorized/denied/approved/kill-switch all pass — see `docs/REMEDIATION.md` Gate 2 |
 | Kill switch / guardrail enforcement / interceptor | **Live-tested + unit-tested** | engage→block→release→restore verified live; behavioral pytest for kill-switch + interceptor + HITL executor + logging ownership |

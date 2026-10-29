@@ -27,10 +27,12 @@ export class GovernanceBaselineStack extends PlatformStack {
       purpose: 'evidence',
     });
 
-    // Spoke → hub evidence delivery (Gate 3): replicate to the hub archive when configured.
+    // Spoke → hub evidence delivery (Gate 3): replicate to the hub archive. ONLY in spoke mode — a
+    // standalone account has no remote hub, so this must never activate there even if hub fields are
+    // present in the config (B1: no placeholder remote dependencies in standalone).
     const hub = this.config.hub;
     const replicateTo =
-      hub?.logArchiveBucketArn && hub.accountId
+      this.mode === 'spoke' && hub?.logArchiveBucketArn && hub.accountId
         ? { bucketArn: hub.logArchiveBucketArn, kmsKeyArn: hub.logArchiveKmsKeyArn, accountId: hub.accountId }
         : undefined;
 

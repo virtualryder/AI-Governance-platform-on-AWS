@@ -52,8 +52,9 @@ export class ControlsStack extends PlatformStack {
       this.detective = new DetectiveRules(this, 'Detective', { config: this.config });
     }
 
-    // Gate 3: spoke shares telemetry into the hub's OAM sink (when a remote hub sink is configured).
-    if (this.config.hub?.oamSinkArn) {
+    // Gate 3: spoke shares telemetry into the hub's OAM sink. ONLY in spoke mode — standalone has no
+    // remote hub sink, so never create a link to a placeholder sink there (B1).
+    if (this.mode === 'spoke' && this.config.hub?.oamSinkArn) {
       this.observabilityLink = new ObservabilityLink(this, 'ObservabilityLink', {
         config: this.config,
         sinkArn: this.config.hub.oamSinkArn,
@@ -67,6 +68,8 @@ export class ControlsStack extends PlatformStack {
       this.publish('controls/hitl-state-machine-arn', this.hitl.stateMachine.stateMachineArn, 'HITL state machine ARN');
       this.publish('controls/hitl-approval-topic-arn', this.hitl.approvalTopic.topicArn, 'HITL approval SNS topic ARN');
       this.publish('controls/hitl-approvals-table', this.hitl.approvals.tableName, 'HITL approvals ledger table');
+      this.publish('controls/hitl-approval-fn-arn', this.hitl.approvalFn.functionArn, 'HITL approval Lambda ARN (invoke to resolve)');
+      this.publish('controls/hitl-approver-role-arn', this.hitl.approverRole.roleArn, 'Supervisor role permitted to approve');
     }
     this.publish('controls/version', '0.1.0', 'Controls stack version');
 

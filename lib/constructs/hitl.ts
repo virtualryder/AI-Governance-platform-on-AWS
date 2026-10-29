@@ -44,6 +44,8 @@ export class HumanInTheLoop extends Construct {
   readonly approvalFn: lambda.Function;
   readonly executorFn: lambda.Function;
   readonly approvals: dynamodb.Table;
+  /** Dedicated supervisor role — the only principal permitted to resolve HITL approvals. */
+  readonly approverRole: iam.Role;
 
   constructor(scope: Construct, id: string, props: HumanInTheLoopProps) {
     super(scope, id);
@@ -134,17 +136,25 @@ export class HumanInTheLoop extends Construct {
       resultPath: '$.execution',
     });
 
-    // On reject/timeout, record the rejection for audit, then end as failed.
+    // On reject/timeout/error, record the terminal state for audit, then end as failed. The Catch MUST
+    // set resultPath so the original input (incl. $.actionDigest) is PRESERVED — the default replaces
+    // the whole input with the error object, which would strand RecordRejected's key lookup (B3a).
     const recordRejected = new tasks.DynamoUpdateItem(this, 'RecordRejected', {
       table: this.approvals,
       key: { pk: tasks.DynamoAttributeValue.fromString(sfn.JsonPath.stringAt('$.actionDigest')) },
-      updateExpression: 'SET #s = :rejected',
-      expressionAttributeNames: { '#s': 'status' },
-      expressionAttributeValues: { ':rejected': tasks.DynamoAttributeValue.fromString('REJECTED') },
+      // REJECTED on an approver 'no'; a timeout or operational error is also caught here — the error
+      // detail is retained under $.approvalError for the operator to distinguish.
+      updateExpression: 'SET #s = :rejected, #e = :err',
+      expressionAttributeNames: { '#s': 'status', '#e': 'terminalError' },
+      expressionAttributeValues: {
+        ':rejected': tasks.DynamoAttributeValue.fromString('REJECTED'),
+        ':err': tasks.DynamoAttributeValue.fromString(sfn.JsonPath.stringAt('$.approvalError.Error')),
+      },
       resultPath: sfn.JsonPath.DISCARD,
     });
     requestApproval.addCatch(recordRejected.next(new sfn.Fail(this, 'Rejected', { error: 'Rejected' })), {
       errors: ['States.ALL'],
+      resultPath: '$.approvalError',
     });
 
     const definition = recordProposed
@@ -178,5 +188,16 @@ export class HumanInTheLoop extends Construct {
       description: 'Resolve a waiting HITL approval (send task success/failure, binding the approver).',
     });
     this.stateMachine.grantTaskResponse(this.approvalFn);
+
+    // Bind approval authority to a dedicated supervisor role: ONLY this role may invoke the approval
+    // function, so the approver is a controlled, auditable principal — not merely a typed-in name
+    // (B3d). An approver assumes this role (restrict its trust to your approver group at rollout),
+    // then invokes the function. CloudTrail records the assumed-role principal.
+    this.approverRole = new iam.Role(this, 'ApproverRole', {
+      roleName: `govai-${config.customerName}-${config.environment}-hitl-approver`,
+      assumedBy: new iam.AccountRootPrincipal(),
+      description: 'HITL supervisor role — the only principal permitted to resolve approvals.',
+    });
+    this.approvalFn.grantInvoke(this.approverRole);
   }
 }

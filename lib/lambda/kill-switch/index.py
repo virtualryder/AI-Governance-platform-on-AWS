@@ -96,10 +96,13 @@ def handler(event, _context):
                     raise
         except acc.exceptions.ConflictException:
             pass  # already engaged
-        _set_flag("engaged")
-        # CreatePolicy is ASYNCHRONOUS — poll the summary until the policy leaves CREATING so the
-        # caller knows the forbid is live (gateway evaluation may still take additional seconds to
-        # reflect it, which is the documented propagation latency for an incident control).
+        # Record a CONSERVATIVE incident state immediately: we are attempting containment, but must NOT
+        # claim "engaged" until the forbid policy reaches a successful terminal state (ACTIVE).
+        _set_flag("engaging")
+        # CreatePolicy is ASYNCHRONOUS — poll until the policy is terminal. SUCCESS == READY/ACTIVE with
+        # an ACTIVE enforcement mode. A CREATE_FAILED (or no usable policy / timeout) is a FAILURE: raise
+        # and leave the flag conservative so no one believes a broken switch is protecting them (B4).
+        ACTIVE_STATES = {"READY", "ACTIVE", "AVAILABLE"}
         status = mode = None
         for _ in range(20):
             p = next((p for p in _iter_policies(engine_id) if p.get("name") == KILL_NAME), None)
@@ -108,6 +111,13 @@ def handler(event, _context):
                 if status and status != "CREATING":
                     break
             time.sleep(3)
+        if status not in ACTIVE_STATES or (mode is not None and mode != "ACTIVE"):
+            raise RuntimeError(
+                f"Kill-switch engage did NOT reach active enforcement (policyStatus={status}, "
+                f"enforcementMode={mode}); leaving state=engaging. Containment is NOT confirmed — "
+                "verify with a real tool request and retry or escalate."
+            )
+        _set_flag("engaged")
         return {"status": "engaged", "gateway": gateway_arn, "enforcementMode": mode, "policyStatus": status}
 
     # release — delete every kill policy, then POLL until none remain (DeletePolicy is asynchronous)

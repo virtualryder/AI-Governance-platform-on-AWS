@@ -41,7 +41,7 @@ flowchart LR
   E --> F[6. Deploy<br/>per mode]
   F --> G[7. Verify live<br/>SSM + console]
   G --> H[8. Use case<br/>image - Runtime]
-  H --> I[9. Enforce<br/>LOG_ONLY - ENFORCE]
+  H --> I[9. Enforce<br/>ENFORCE (default)]
 ```
 
 Typical engagement: **standalone** pilot (one account, one use case) → graduate to **hub** + **spoke**
@@ -86,7 +86,7 @@ flowchart TB
   end
   subgraph AgentPlatform
     IDP[Cognito JWT / external IdP] --> GW[MCP Gateway<br/>CUSTOM_JWT]
-    GW --> PE[Cedar PolicyEngine<br/>LOG_ONLY - ENFORCE]
+    GW --> PE[Cedar PolicyEngine<br/>ENFORCE (default)]
     GW --> INT[Per-user interceptor<br/>+ DynamoDB ledger]
     WID[WorkloadIdentity] --- RT[AgentCore Runtime<br/>image-gated]
     MEM[Memory CMK] --- TOOLS[Browser / CodeInterpreter]
@@ -169,10 +169,18 @@ decision, not an assurance it fits every boundary).
 ## 5. Prerequisites
 
 - **Node 22+**, repo deps: `npm ci`. CDK via `npx` (pinned in `package.json`).
+- **Docker (with buildx) + outbound network to public ECR — required for `npm test`, `cdk synth`,
+  AND `cdk deploy`**, not only the runtime image. The kill-switch Lambda bundles a pinned boto3 via a
+  Docker build image, so synthesis/tests pull `public.ecr.aws/sam/build-python3.13`. (A review-only
+  profile may disable the kill switch to synth without Docker, but the governed MVP ships it.)
+- **Python 3.12+ for the control-handler tests:** `python -m pip install -r requirements-dev.txt`
+  (pinned pytest + boto3), then `npm run test:lambda`.
 - **AWS credentials for the target account/region.** Name the profile explicitly on every command
-  (`--profile <name>`). **Never deploy from a personal/default profile.**
+  (`--profile <name>`). **Never deploy from a personal/default profile.** Run
+  `aws sts get-caller-identity --profile <name>` before every phase to confirm the account.
 - **CDK bootstrap** (once per account/region): `npx cdk bootstrap aws://<account>/<region> --profile <name>`.
-- For a use-case Runtime image: **Docker with buildx** (ARM64 cross-build) + ECR access.
+- For the use-case Runtime image: ARM64 cross-build + ECR push — `build-image.sh` requires explicit
+  `--profile` and `--region` and prints an immutable digest (there is no env-var shortcut).
 
 ---
 
@@ -201,8 +209,10 @@ npx cdk deploy --all -c mode=<mode> -c configFile=config/<customer>.json --profi
 - **org:** deploy in the management / delegated-admin account; set `org.agenticOuId` so SCPs, the Guard
   hook, and the Budgets→SCP action attach to the Agentic OU.
 
-The gateway's Cedar engine starts in **`LOG_ONLY`** — it observes and logs decisions without blocking.
-Flip `agentcore.cedarMode` to **`ENFORCE`** after validating per-tool policies against real traffic.
+The gateway's Cedar engine **enforces by default** (`ENFORCE`) — forbid policies and the kill switch
+actually block. This is the only supported governed-MVP mode; `LOG_ONLY` (observe-only) is rejected by
+the config loader unless you set `agentcore.acknowledgeNonEnforcingCedar:true` deliberately. Do not run
+a "governed" pilot in LOG_ONLY.
 
 ---
 
@@ -277,12 +287,15 @@ HUMAN_CLIENT=$(aws ssm get-parameter --name /governed-ai/<customer>/<env>/agent-
 
 # Create an authorized CSR (in the csr-agents group) and an unauthorized viewer (in NO group).
 ./scripts/create-human-user.sh --pool-id "$POOL" --username csr-alice  --group csr-agents --profile <p> --region <r>
-./scripts/create-human-user.sh --pool-id "$POOL" --username viewer-bob --group ""          --profile <p> --region <r>
+./scripts/create-human-user.sh --pool-id "$POOL" --username viewer-bob --group "" --profile <p> --region <r>
 
-# Obtain a token (requires identity.humanAuth.enableUserPasswordAuth). Use the ID token (carries groups).
+# Obtain a token (requires identity.humanAuth.enableUserPasswordAuth). Use the ACCESS token: the
+# gateway/runtime authorizer validates client_id against allowedClients, and the Cognito ACCESS token
+# carries both client_id and cognito:groups. (The ID token puts the client in `aud` and will NOT match
+# the client_id-based authorizer.)
 aws cognito-idp initiate-auth --region <r> --profile <p> --auth-flow USER_PASSWORD_AUTH \
   --client-id "$HUMAN_CLIENT" --auth-parameters USERNAME=csr-alice,PASSWORD='<pw>' \
-  --query 'AuthenticationResult.IdToken' --output text
+  --query 'AuthenticationResult.AccessToken' --output text
 ```
 Expired tokens, wrong-client tokens, and users with no group must be denied at the gateway (see §15).
 
@@ -303,15 +316,25 @@ Expired tokens, wrong-client tokens, and users with no group must be denied at t
 1. The agent reaches the consequential step and calls `request_human_signoff` → starts the approval
    state machine (`govai-<customer>-<env>-hitl`) and returns a pending approval id. It does **not**
    perform the action (Cedar forbids it).
-2. An approver resolves the waiting task (bind their identity):
+2. An **authorized supervisor** resolves the waiting task. Only the dedicated approver role
+   (`controls/hitl-approver-role-arn`) may invoke the approval function
+   (`controls/hitl-approval-fn-arn`) — assume that role first; CloudTrail records the real principal.
+   Use `fileb://` + the CLI v2 binary format (an inline `--payload` string is not portable under v2):
    ```bash
-   aws lambda invoke --function-name <Hitl ApprovalFn> --region <r> --profile <p> \
-     --payload '{"taskToken":"<from SNS>","decision":"approve","approver":"supervisor-sam"}' out.json
+   FN=$(aws ssm get-parameter --region <r> --profile <p> \
+     --name /governed-ai/<customer>/<env>/controls/hitl-approval-fn-arn --query Parameter.Value --output text)
+   printf '{"taskToken":"%s","decision":"approve","approver":"supervisor-sam"}' "$TASK_TOKEN" > approval.json
+   aws lambda invoke --region <r> --profile <p> --function-name "$FN" \
+     --cli-binary-format raw-in-base64-out --payload fileb://approval.json approval-response.json
+   cat approval-response.json   # inspect for FunctionError + the decision
    ```
-3. The executor Lambda (a **separate** role — not the agent) performs the action **exactly once** and
-   writes actor/approver/decision/result to the approvals ledger
-   (`/governed-ai/<customer>/<env>/controls/hitl-approvals-table`). Re-approving the same digest does
-   not re-execute. Reject/timeout record `REJECTED` and no action runs.
+   The task token comes from the approval SNS message (or the Step Functions execution history). Do
+   NOT commit task tokens or credentials to the evidence bundle.
+3. The executor Lambda (a **separate** role — not the agent) performs the action and records the
+   terminal state in the approvals ledger (`controls/hitl-approvals-table`): `COMPLETED` only on a real
+   success, `FAILED` on a Lambda FunctionError or application error, `UNKNOWN` if the call's outcome is
+   uncertain (reconcile via the idempotency key = the action digest). Re-approving the same digest does
+   not re-execute; reject/timeout record `REJECTED` and no action runs.
 
 ---
 
@@ -319,8 +342,15 @@ Expired tokens, wrong-client tokens, and users with no group must be denied at t
 
 Do this end to end before telling a customer standalone is ready. Every step has an expected result.
 
+Start from the dedicated minimal profile — `cp config/standalone.example.json config/<customer>.json`,
+set `region` and (after step 3) `agentcore.runtimeImageUri` to the image digest. It has no hub/org and
+optional capabilities off, so standalone synthesizes with no external OAM link or remote replication.
+
 ```bash
-# 1. Clean build + both test suites + nag (no AWS yet)
+# 0. (one-time) Python test deps
+python -m pip install -r requirements-dev.txt
+
+# 1. Clean build + both test suites + nag (needs Docker running — the kill-switch Lambda bundles boto3)
 npm ci && npm run build && npm test && npm run test:lambda
 npx cdk synth --quiet -c mode=standalone -c configFile=config/<customer>.json -c nag=true --profile <p>
 
@@ -334,6 +364,30 @@ npx cdk deploy --all -c mode=standalone -c configFile=config/<customer>.json --p
 
 # 4. Provision humans (§A), then run the positive + negative transactions
 ```
+
+**Copy-paste authenticated invoke** (the Runtime uses a JWT authorizer, so call the HTTPS invocation
+endpoint with a Bearer ACCESS token — a SigV4 `aws bedrock-agentcore invoke-agent-runtime` is rejected
+with "Authorization method mismatch"). Bash:
+```bash
+R=<r>; CUST=<customer>; ENV=<env>
+P() { aws ssm get-parameter --region "$R" --profile <p> --name "$1" --query Parameter.Value --output text; }
+RT=$(P /governed-ai/$CUST/$ENV/agent-platform/runtime-arn)
+CLIENT=$(P /governed-ai/$CUST/$ENV/agent-platform/human-client-id)
+TOKEN=$(aws cognito-idp initiate-auth --region "$R" --profile <p> --auth-flow USER_PASSWORD_AUTH \
+  --client-id "$CLIENT" --auth-parameters USERNAME=csr-alice,PASSWORD='<pw>' \
+  --query 'AuthenticationResult.AccessToken' --output text)
+ENC=$(python -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1],safe=''))" "$RT")
+curl -sS -X POST \
+  "https://bedrock-agentcore.$R.amazonaws.com/runtimes/$ENC/invocations?qualifier=DEFAULT" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id: gate-$(date +%s)-csr-alice-000000000000" \
+  -H "Content-Type: application/json" \
+  -d '{"access_token":"'"$TOKEN"'","case_id":"CASE-001","prompt":"Pothole at 100 Main St; run the workflow and request sign-off."}'
+```
+Expected (authorized): a JSON result listing the governed tools **without** `submit_service_request`,
+the workflow steps run, and a pending HITL approval id. Repeat with `viewer-bob` (no group): expect
+`ACCESS DENIED` and an empty tool list.
+
 **Expected results (the acceptance core):**
 - **Authorized human + allowed tool** → the tool executes; the ledger/trace shows `csr-alice` + case id.
 - **Unauthorized identity** (`viewer-bob`, no group) → gateway returns deny-by-default; zero tools listed.

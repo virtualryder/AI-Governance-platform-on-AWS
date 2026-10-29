@@ -1,0 +1,55 @@
+{
+  "_comment": "Minimal, self-contained STANDALONE MVP profile — one account, one region, one use case, Cedar ENFORCE, no hub/org, no optional capabilities. Copy to config/<customer>.json and set region + runtimeImageUri (immutable digest from build-image.sh). This is the profile the acceptance gate (docs/runbooks/DEPLOYMENT.md) is written against.",
+  "customerName": "acme-mvp",
+  "environment": "dev",
+  "region": "us-east-1",
+  "dataClassification": "internal",
+  "costCenter": "ai-pilot",
+  "identity": {
+    "provider": "cognito",
+    "mode": "brokered",
+    "humanAuth": {
+      "enabled": true,
+      "groups": ["csr-agents"],
+      "callbackUrls": ["https://localhost/callback"],
+      "enableUserPasswordAuth": true
+    }
+  },
+  "governance": {
+    "logRetentionDays": 30,
+    "invocationLogging": true,
+    "invocationLoggingOwnership": "create",
+    "cloudTrailDataEvents": true,
+    "guardrail": {
+      "enabled": true,
+      "contentFilterStrength": "HIGH",
+      "piiEntitiesToBlock": ["US_SOCIAL_SECURITY_NUMBER", "CREDIT_DEBIT_CARD_NUMBER"],
+      "piiEntitiesToAnonymize": ["EMAIL", "PHONE"],
+      "deniedTopics": [
+        { "name": "LegalAdvice", "definition": "Providing definitive legal advice to members of the public.", "examples": ["Am I legally required to repay this?"] }
+      ],
+      "blockedMessage": "This request can't be completed under this organization's AI use policy.",
+      "enforceAccountLevel": true
+    }
+  },
+  "agentcore": {
+    "_comment_image": "Set runtimeImageUri to the IMMUTABLE DIGEST printed by build-image.sh (…@sha256:…), not a tag.",
+    "runtimeImageUri": "REPLACE_WITH_ECR_DIGEST_URI",
+    "useCaseManifest": "use-cases/citizen-311/manifest.yaml",
+    "accessTokenValidityMinutes": 15,
+    "allowedModelIds": ["anthropic.claude-sonnet-4-5-20250929-v1:0"],
+    "cedarMode": "ENFORCE",
+    "enableMemory": false,
+    "enableBrowser": false,
+    "enableCodeInterpreter": false,
+    "enableObservability": false
+  },
+  "controls": {
+    "monthlyBudgetUsd": 50,
+    "budgetAlertEmails": ["ai-pilot-owners@example.com"],
+    "killSwitch": true,
+    "humanInTheLoop": true,
+    "gatewayRequestsPerMinute": 60,
+    "detectiveConfigRules": false
+  }
+}

@@ -84,6 +84,14 @@ export function applyControlsNagSuppressions(
           'which is required and table-scoped; the executor target invoke is scoped to the single configured ARN.',
       },
     ]);
+    NagSuppressions.addResourceSuppressionsByPath(stack, `${sid}/Hitl/ApproverRole/DefaultPolicy/Resource`, [
+      {
+        id: 'AwsSolutions-IAM5',
+        reason:
+          'grantInvoke on the approval function adds the standard lambda:InvokeFunction + version ' +
+          'wildcard (function:*); scoped to the single approval function.',
+      },
+    ]);
     NagSuppressions.addResourceSuppressionsByPath(stack, `${sid}/Hitl/Approvals/Resource`, [
       {
         id: 'HIPAA.Security-DynamoDBInBackupPlan',

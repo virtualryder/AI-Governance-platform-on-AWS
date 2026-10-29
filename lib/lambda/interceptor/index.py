@@ -47,13 +47,10 @@ def _extract_model(params):
 
 
 def _model_allowed(requested, allowed):
-    """Boundary-anchored prefix match on the actual model id (not arbitrary params)."""
-    for entry in allowed:
-        if requested == entry or (
-            requested.startswith(entry) and requested[len(entry):][:1] in ("-", ".", ":", "/")
-        ):
-            return True
-    return False
+    """EXACT equality on the requested model id (B5). Allowlist entries must be full model ids; a
+    prefix/family match is intentionally NOT accepted so a lookalike id cannot slip through. Enumerate
+    every permitted variant explicitly in allowedModelsByGroup."""
+    return requested in set(allowed)
 
 
 def _claims(headers):

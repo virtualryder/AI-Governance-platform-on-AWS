@@ -12,7 +12,7 @@ import pathlib
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 os.environ["LEDGER_TABLE"] = "test-ledger"
 os.environ["RATE_PER_MINUTE"] = "0"
-os.environ["ALLOWED_MODELS_BY_GROUP"] = json.dumps({"csr-agents": ["anthropic.claude-sonnet-4-5"]})
+os.environ["ALLOWED_MODELS_BY_GROUP"] = json.dumps({"csr-agents": ["anthropic.claude-sonnet-4-5-20250929-v1:0"]})
 os.environ["MODEL_PARAM_NAME"] = "modelId"
 os.environ["MODEL_ALLOWLIST_DEFAULT"] = "deny"
 
@@ -80,6 +80,6 @@ def test_unmapped_group_denied_by_default():
 
 
 def test_substring_sibling_model_not_allowed():
-    # entry "anthropic.claude-sonnet-4-5" must not authorize an unrelated id that merely contains it mid-token
-    resp = interceptor.handler(_event(["csr-agents"], "router", {"modelId": "evil-anthropic.claude-sonnet-4-5"}), None)
+    # a lookalike/sibling id must NOT be authorized by the exact allowlist (B5 exact equality)
+    resp = interceptor.handler(_event(["csr-agents"], "router", {"modelId": "anthropic.claude-sonnet-4-5-20250929-v2:0"}), None)
     assert _denied(resp)

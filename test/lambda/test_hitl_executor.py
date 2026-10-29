@@ -36,8 +36,9 @@ class _FakeDDB:
             if self.status != "PENDING":
                 raise _CCF()
             self.status = "EXECUTING"
-        elif ":done" in ExpressionAttributeValues:
-            self.status = "COMPLETED"
+        elif ":s" in ExpressionAttributeValues:
+            # _set_status(...) -> COMPLETED | FAILED | UNKNOWN
+            self.status = ExpressionAttributeValues[":s"]["S"]
 
 
 class _FakeLambda:
@@ -91,3 +92,39 @@ def test_record_only_when_no_target(monkeypatch):
     out = executor.handler(_event(), None)
     assert out["executed"] is False
     assert executor.lam.invocations == 0
+
+
+class _ErrLambda:
+    """Returns an invocation with a FunctionError (function ran but failed)."""
+    def invoke(self, FunctionName, Payload, **kwargs):
+        class _Body:
+            def read(self_inner):
+                return b'{"errorMessage": "backend down"}'
+        return {"Payload": _Body(), "FunctionError": "Unhandled"}
+
+
+class _RaisingLambda:
+    def invoke(self, FunctionName, Payload, **kwargs):
+        raise RuntimeError("network reset")
+
+
+def test_function_error_is_not_recorded_as_completed():
+    # B3b: a Lambda FunctionError must NOT yield executed:true/COMPLETED.
+    ddb = _FakeDDB("PENDING")
+    executor.ddb = ddb
+    executor.lam = _ErrLambda()
+    out = executor.handler(_event(), None)
+    assert out["status"] == "failed"
+    assert out["executed"] is False
+    assert ddb.status == "FAILED"
+
+
+def test_transport_failure_after_claim_is_unknown_and_raises():
+    # B3c: a transport failure after claiming must mark UNKNOWN (reconcilable), not COMPLETED.
+    import pytest
+    ddb = _FakeDDB("PENDING")
+    executor.ddb = ddb
+    executor.lam = _RaisingLambda()
+    with pytest.raises(RuntimeError):
+        executor.handler(_event(), None)
+    assert ddb.status == "UNKNOWN"

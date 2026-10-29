@@ -45,7 +45,9 @@ export class KillSwitch extends Construct {
       code: lambda.Code.fromAsset(path.join(__dirname, '..', 'lambda', 'kill-switch'), {
         bundling: {
           image: lambda.Runtime.PYTHON_3_13.bundlingImage,
-          command: ['bash', '-c', 'pip install --no-cache-dir boto3 -t /asset-output && cp index.py /asset-output'],
+          // Pin the bundled boto3 so the same commit always produces the same control-function
+          // dependency (reproducible release evidence). Bump deliberately + re-test.
+          command: ['bash', '-c', 'pip install --no-cache-dir "boto3==1.43.89" -t /asset-output && cp index.py /asset-output'],
         },
       }),
       timeout: Duration.seconds(120), // polls async Create/DeletePolicy to completion
@@ -80,7 +82,8 @@ export class KillSwitch extends Construct {
         actions: ['bedrock-agentcore:*'],
         resources: [
           `arn:${stack.partition}:bedrock-agentcore:${stack.region}:${stack.account}:gateway/govai-${c.customerName}-${c.environment}-*`,
-          `arn:${stack.partition}:bedrock-agentcore:${stack.region}:${stack.account}:policy-engine/*`,
+          // Scoped to THIS platform's policy engine (name uses underscores), not every engine.
+          `arn:${stack.partition}:bedrock-agentcore:${stack.region}:${stack.account}:policy-engine/govai_${c.customerName.replace(/-/g, '_')}_${c.environment}_*`,
         ],
       }),
     );

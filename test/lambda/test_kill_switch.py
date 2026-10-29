@@ -67,8 +67,15 @@ class _FakeACC:
         if not self.persistent:
             self.policies = [p for p in self.policies if p["policyId"] != policyId]
 
+    def __init_create_status__(self):
+        pass
+
     def create_policy(self, **kw):
         self.created.append(kw["name"])
+        # Simulate async creation: the policy appears with a configurable terminal status.
+        self.policies.append(
+            {"name": kw["name"], "policyId": kw["name"] + "-x", "status": getattr(self, "create_status", "ACTIVE"), "enforcementMode": "ACTIVE"}
+        )
 
 
 def _wire(acc):
@@ -104,10 +111,21 @@ def test_unknown_action_rejected_not_released():
     assert ssm.flag != "normal"
 
 
-def test_engage_creates_policy_and_flags_engaged():
+def test_engage_creates_policy_and_flags_engaged_when_active():
     acc = _FakeACC([])
+    acc.create_status = "ACTIVE"
     ssm = _wire(acc)
     out = killswitch.handler({"action": "engage"}, None)
     assert out["status"] == "engaged"
     assert acc.created == [KILL]
     assert ssm.flag == "engaged"
+
+
+def test_engage_raises_and_does_not_flag_engaged_on_create_failed():
+    # B4: a CREATE_FAILED policy must NOT be reported as engaged.
+    acc = _FakeACC([])
+    acc.create_status = "CREATE_FAILED"
+    ssm = _wire(acc)
+    with pytest.raises(RuntimeError):
+        killswitch.handler({"action": "engage"}, None)
+    assert ssm.flag != "engaged"  # conservative incident state, not a false 'engaged'

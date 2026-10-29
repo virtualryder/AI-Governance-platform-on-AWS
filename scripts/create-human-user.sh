@@ -40,9 +40,15 @@ fi
 # Set a permanent password so there is no FORCE_CHANGE_PASSWORD challenge for the test flow.
 "${AWS[@]}" cognito-idp admin-set-user-password --user-pool-id "$POOL_ID" --username "$USERNAME" \
   --password "$PASSWORD" --permanent
-"${AWS[@]}" cognito-idp admin-add-user-to-group --user-pool-id "$POOL_ID" --username "$USERNAME" \
-  --group-name "$GROUP"
-echo "Created ${USERNAME} in group ${GROUP} (pool ${POOL_ID})."
+# Only add to a group when one is given. An empty --group creates a deliberately UN-grouped user
+# (the negative-test "viewer" who must be denied by deny-by-default) — adding to "" would error.
+if [[ -n "$GROUP" ]]; then
+  "${AWS[@]}" cognito-idp admin-add-user-to-group --user-pool-id "$POOL_ID" --username "$USERNAME" \
+    --group-name "$GROUP"
+  echo "Created ${USERNAME} in group ${GROUP} (pool ${POOL_ID})."
+else
+  echo "Created ${USERNAME} with NO group (pool ${POOL_ID}) — expected to be denied by deny-by-default."
+fi
 echo "Obtain a token (requires identity.humanAuth.enableUserPasswordAuth + the human client id):"
 echo "  aws cognito-idp initiate-auth --region ${REGION} --auth-flow USER_PASSWORD_AUTH \\"
 echo "    --client-id <HUMAN_CLIENT_ID> --auth-parameters USERNAME=${USERNAME},PASSWORD='<password>'"

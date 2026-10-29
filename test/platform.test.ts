@@ -488,7 +488,10 @@ test('per-user interceptor: ledger + REQUEST interceptor attached when enabled',
 // ---- Gate 3: connected hub/spoke integration (synth/nag/test-verified; not yet live-validated) ----
 
 test('gate3 spoke: OAM link to the hub sink when hub.oamSinkArn is set (F07)', () => {
-  const t = controlsTemplate(); // example config sets hub.oamSinkArn
+  // OAM link is SPOKE-only now (B1: standalone must not link to a remote sink). Build in spoke mode.
+  const t = Template.fromStack(
+    new ControlsStack(new App(), 'CTSPOKE', { config, mode: 'spoke', env: { region: config.region } }),
+  );
   t.hasResourceProperties('AWS::Oam::Link', {
     SinkIdentifier: 'arn:aws:oam:us-east-1:111111111111:sink/govai-example-sink',
     ResourceTypes: Match.arrayWith(['AWS::CloudWatch::Metric', 'AWS::Logs::LogGroup', 'AWS::XRay::Trace']),
@@ -616,4 +619,29 @@ test('config: VPC network mode requires subnets + security groups', () => {
   const f = path.join(dir, 'net.json');
   fs.writeFileSync(f, JSON.stringify(c));
   expect(() => loadConfig(f)).toThrow(/subnetIds and securityGroupIds/);
+});
+
+// ---- Second review: standalone MVP must not leak remote hub integrations (B1) ----
+
+test('standalone: no external OAM link or remote replication even if hub fields are present', () => {
+  // Use the example config (which DOES carry hub fields) but in standalone mode.
+  const baseline = Template.fromStack(
+    new GovernanceBaselineStack(new App(), 'SAB', { config, mode: 'standalone', env: { region: config.region } }),
+  );
+  const buckets = baseline.findResources('AWS::S3::Bucket');
+  expect(JSON.stringify(buckets)).not.toContain('ReplicationConfiguration');
+
+  const controls = Template.fromStack(
+    new ControlsStack(new App(), 'SAC', { config, mode: 'standalone', env: { region: config.region } }),
+  );
+  controls.resourceCountIs('AWS::Oam::Link', 0);
+});
+
+test('standalone profile: self-contained (no hub/org, optional capabilities off)', () => {
+  const sa = loadConfig('config/standalone.example.json');
+  expect(sa.hub).toBeUndefined();
+  expect(sa.org).toBeUndefined();
+  expect(sa.agentcore.enableMemory).toBe(false);
+  expect(sa.agentcore.enableBrowser).toBe(false);
+  expect(sa.agentcore.cedarMode).toBe('ENFORCE');
 });

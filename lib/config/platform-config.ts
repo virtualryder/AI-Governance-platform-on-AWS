@@ -67,9 +67,8 @@ export interface PerUserGovernanceConfig {
   downgradeAtTokens?: number;
   fallbackModelId?: string;
   ratePerMinute?: number;
-  /** Cognito-group -> allowed model-family entitlement. Matching is boundary-anchored prefix on the
-   * requested model id (e.g. entry `anthropic.claude-sonnet-4-5` matches `...-4-5-2025...-v1:0`),
-   * NOT a substring scan of arbitrary parameters. */
+  /** Cognito-group -> allowed model ids. Matching is EXACT equality on the requested model id (list
+   * every permitted variant explicitly); not a prefix/family match and not a substring scan. */
   allowedModelsByGroup?: Record<string, string[]>;
   /** Exact JSON key that carries the model id on a model-routing tool call (checked at the top level
    * of `params` and under `params.arguments`). The model allowlist is enforced ONLY when this key is
@@ -268,6 +267,9 @@ function validate(cfg: PlatformConfig): void {
   if (cfg.governance.logRetentionDays < 365 && ['phi', 'cjis'].includes(cfg.dataClassification))
     errs.push('phi/cjis workloads should retain logs >= 365 days');
   if (cfg.controls.monthlyBudgetUsd <= 0) errs.push('monthlyBudgetUsd must be > 0');
+  // Fail closed: an empty model allowlist must NOT fall through to a broad foundation-model/* grant.
+  if (!cfg.agentcore.allowedModelIds?.length)
+    errs.push('agentcore.allowedModelIds must be non-empty (empty would broaden runtime inference to all models)');
   const net = cfg.agentcore.network;
   if (net?.mode === 'VPC' && (!net.subnetIds?.length || !net.securityGroupIds?.length))
     errs.push("agentcore.network.mode 'VPC' requires non-empty subnetIds and securityGroupIds");

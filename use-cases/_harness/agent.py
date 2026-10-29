@@ -6,6 +6,7 @@ is the bearer for every governed Gateway (MCP) tool call, so Cedar evaluates the
 The agent never commits the consequential action; it requests human sign-off (separation of duties).
 """
 import base64
+import datetime
 import hashlib
 import json
 import os
@@ -52,6 +53,8 @@ def _save_memory(subject, case_id, correlation_id, summary):
             memoryId=MEMORY_ID,
             actorId=subject,
             sessionId=correlation_id,
+            # eventTimestamp is REQUIRED by the CreateEvent request model (its omission was a defect).
+            eventTimestamp=datetime.datetime.now(datetime.timezone.utc),
             payload=[{"conversational": {"role": "ASSISTANT", "content": {"text": summary[:4000]}}}],
         )
         log.info("memory_event_saved case_id=%s", case_id)

@@ -1,5 +1,29 @@
 # Readiness-review remediation (findings → fixes)
 
+## Second review (commit `c18c586`, 29 Oct 2026) — standalone MVP blockers
+
+A second review focused on the standalone MVP + SA handoff. Maturity labels: **implemented** (builds,
+nag-clean) · **locally verified** (npm test / pytest) · **live verified** (run on AWS) · **release
+accepted** (reproduced by a second operator via the §15 gate). Fixes landed:
+
+| # | Second-review blocker | Fix | Label |
+|---|---|---|---|
+| B1 | Standalone config leaked remote hub integrations (OAM link + evidence replication to placeholders) | Remote integration gated on **spoke mode** (not field presence); dedicated `config/standalone.example.json` with no hub/org + optional capabilities off; structural test that standalone emits no `Oam::Link`/`ReplicationConfiguration` | locally verified |
+| B2 | Runbook used the Cognito **ID token** vs the client_id authorizer | Runbook uses the **access token**; LOG_ONLY references removed (ENFORCE is the sole governed-MVP path) | implemented |
+| B3 | HITL: reject/timeout dropped the digest; Lambda FunctionError counted as success; stranded EXECUTING | Catch `resultPath` preserves input; executor honours **FunctionError** + app error (→ FAILED), transport failure → **UNKNOWN** (reconcile via idempotency key); approval bound to a dedicated supervisor role | locally verified |
+| B4 | Kill-switch **engage** reported success on `CREATE_FAILED` | Engage now requires a successful terminal (ACTIVE) state + ACTIVE enforcement; raises + keeps a conservative `engaging` state otherwise; policy-engine IAM scoped to this platform's engine | locally verified |
+| B5 | Empty model allowlist failed open; model/group matching not exact | `allowedModelIds` non-empty enforced (fail closed); interceptor uses **exact** model equality; group-substring limitation documented (needs interceptor/claim-based exact membership) | locally verified |
+| B6 | Runbook/scripts not a clean handoff | Scripts marked executable; `create-human-user.sh` skips empty group; `--cli-binary-format`/`fileb://` approval example; copy-paste authenticated invoke; Docker-for-synth prereq; pinned `requirements-dev.txt`; boto3 pinned in bundling | implemented |
+| — | Optional-capability SDK defects (memory `eventTimestamp`, OBO `workloadName`, registry client) | Memory `eventTimestamp` added; memory/browser/A2A/registry/VPC **off in the MVP profile**; OBO/registry calls remain best-effort + labeled not-live-validated | implemented |
+
+**Remaining to reach *release accepted* (standalone):** a second operator reproduces the §15 acceptance
+matrix from a clean checkout in a fresh account (incl. the negative/failure paths). Group-exact Cedar
+membership, real-backend integration, and existing-account logging adoption/restore remain qualified.
+
+---
+
+## First review (commit `13e7edb`, 29 Oct 2026) — 16 findings
+
 An independent readiness review of commit `13e7edb` (29 Oct 2026) identified 16 findings. Each was
 re-validated against the source before any change. This table tracks what was fixed, what was
 deliberately relabelled/descoped, and what remains for later hardening gates. Fixes are

@@ -78,17 +78,29 @@ Copy `config/platform.example.json` to `config/<customer>.json` for each custome
 ## Maturity
 
 This is a **governance accelerator undergoing a defined hardening + validation phase** — not a
-production-certified, four-mode product. An independent readiness review (29 Oct 2026) raised 16
-findings; **all 16 are now addressed in code** (see [`docs/REMEDIATION.md`](docs/REMEDIATION.md)).
-Everything below is `npm test` + `cdk-nag`-clean across all four modes; the distinction that matters is
-**which parts have been validated against live AWS** vs. built-and-verified-but-not-yet-live.
+production-certified, four-mode product. Two independent readiness reviews (29 Oct 2026) drove the
+current state; their findings and fixes are tracked in [`docs/REMEDIATION.md`](docs/REMEDIATION.md).
+Rather than a blanket "all addressed", each capability carries one of four honest labels:
+
+- **implemented** — code exists, builds, `cdk-nag`-clean.
+- **locally verified** — covered by `npm test` / `npm run test:lambda` (template + behavioral).
+- **live verified** — exercised against real AWS.
+- **release accepted** — reproduced from a clean checkout by a second operator with the acceptance gate.
+
+**Target milestone:** one *release-accepted* **standalone** MVP (one region, one use case, one config,
+one immutable image, recorded second-operator acceptance per `docs/runbooks/DEPLOYMENT.md` §15). The
+second review's bounded standalone blockers (standalone config no longer leaks hub placeholders;
+kill-switch engage fails closed on a creation failure; HITL honours Lambda FunctionError + UNKNOWN
+recovery; exact model allowlist + empty-list fail-closed; token/CLI/script handoff fixes; optional
+capabilities off by default in the standalone profile) are fixed; the remaining step to *release
+accepted* is the second-operator run.
 
 **Gate status (hardening plan):**
 
 | Gate | Scope | Status |
 |---|---|---|
 | 1 | Truthful scope + safe defaults (enforce by default, honest claims) | ✅ done |
-| 2 | **Standalone reference** — full governed workflow | ✅ **live-validated** in a real account (2026-10-29) |
+| 2 | **Standalone reference** — full governed workflow | live-verified (2026-10-29); second-review blockers fixed (locally verified) — **release-accepted** pending a second-operator run |
 | 3 | Connected hub/spoke (OAM links, evidence replication, catalog shares) | 🔨 built + verified — needs 2 accounts in one Org to close |
 | 4 | Org enforcement (SCP principal alignment, delegated-admin, budget scope) | 🔨 built + verified — needs a test OU to close |
 | 5 | Optional (A2A orchestration, private VPC networking, Memory, Omni) | 🔨 built + verified — needs a 2nd agent / VPC / Omni domain to close |

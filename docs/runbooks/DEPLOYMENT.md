@@ -420,6 +420,24 @@ inference succeeds under the SCPs; a non-governed role's inference is denied; th
 guardrails/logging; the kill switch engages/releases under the SCPs; the budget→freeze SCP attaches at
 threshold and detaches on recovery; account remove/re-add and hook WARN→FAIL behave as intended.
 
+## 12e. Optional capability profiles (Gate 5) — built, NOT yet live-validated
+
+Enable these per customer; each needs a live environment to prove before you rely on it.
+
+- **Private networking (VPC):** set `agentcore.network: { mode: 'VPC', subnetIds: [...],
+  securityGroupIds: [...] }` to place the Runtime + Browser in the customer VPC (CodeInterpreter stays
+  SANDBOX). Provide subnets with egress/PrivateLink to Bedrock + the gateway. **Validate:** the agent
+  still reaches Bedrock + its tools from inside the VPC; egress is constrained as intended.
+- **Multi-agent (A2A):** set `agentcore.protocol: 'A2A'` + `agentcore.multiAgent` (collaborators with
+  `runtimeArn` + `auth`). The harness adds a delegation tool per collaborator, exchanges an OBO token
+  for `auth:'obo'`, publishes a registry record, and propagates a correlation id. **Validate with a
+  SECOND deployed agent:** a real remote invoke, identity propagation, trace continuity across the hop,
+  and that Cedar still governs the invoked agent's own tools. Do not advertise A2A as working until this
+  passes.
+- **Memory:** with `agentcore.enableMemory`, the harness writes a case-outcome event to AgentCore
+  Memory. **Validate:** events appear and can be recalled.
+- **CloudWatch Omni:** see §B / the hub Omni upgrade; needs a real Omni domain + live telemetry.
+
 ## 13. Operations
 
 - **Health**: Runtime endpoint `READY`; gateway reachable; `GetTraceSegmentDestination` → `ACTIVE`.

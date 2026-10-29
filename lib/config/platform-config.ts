@@ -203,6 +203,14 @@ export interface PlatformConfig {
      * deny-by-default already governs an empty gateway. Opt in only once tool-scoped policies the
      * engine will accept exist (the use-case renders them). */
     attachBaselineCedarPolicies?: boolean;
+    /** Private networking (Gate 5). Default PUBLIC (AgentCore-managed egress). 'VPC' places the
+     * Runtime and Browser in the customer's VPC (requires subnetIds + securityGroupIds) for regulated
+     * egress control / PrivateLink. CodeInterpreter stays SANDBOX (no egress) regardless. */
+    network?: {
+      mode?: 'PUBLIC' | 'VPC';
+      subnetIds?: string[];
+      securityGroupIds?: string[];
+    };
     /** CloudWatch Omni upgrade (hub mode) — the next-gen unified/agent observability experience that
      * supersedes the classic governance dashboard. An Omni **domain** is created out-of-band during
      * Omni onboarding (console + SSO; there is no CloudFormation domain resource), so this is gated on
@@ -260,6 +268,9 @@ function validate(cfg: PlatformConfig): void {
   if (cfg.governance.logRetentionDays < 365 && ['phi', 'cjis'].includes(cfg.dataClassification))
     errs.push('phi/cjis workloads should retain logs >= 365 days');
   if (cfg.controls.monthlyBudgetUsd <= 0) errs.push('monthlyBudgetUsd must be > 0');
+  const net = cfg.agentcore.network;
+  if (net?.mode === 'VPC' && (!net.subnetIds?.length || !net.securityGroupIds?.length))
+    errs.push("agentcore.network.mode 'VPC' requires non-empty subnetIds and securityGroupIds");
   if (cfg.agentcore.cedarMode === 'LOG_ONLY' && !cfg.agentcore.acknowledgeNonEnforcingCedar)
     errs.push(
       "agentcore.cedarMode 'LOG_ONLY' is non-enforcing (observe-only): forbid policies and the kill " +

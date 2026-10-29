@@ -46,11 +46,13 @@ npx cdk deploy --all -c mode=standalone -c configFile=config/<customer>.json --p
   **Agent Registry** (+RAM), a **CloudWatch governance dashboard**, **SRA detective Config rules**,
   an **org-wide Guard-hook StackSet** (service-managed, auto-deploying to the Agentic OU), and an
   opt-in **CloudWatch Omni Space** (`AWS::CloudWatch::Space`) upgrade for unified + agent observability.
-- **Multi-agent (A2A) — IAM scaffolding only, not functioning orchestration**: the runtime role is
-  granted `InvokeAgentRuntime` on allow-listed collaborator runtimes (plus OBO token exchange and Agent
-  Registry publish) and the `multiAgent` config is handed to the harness, but the Python harness does
-  **not** yet construct collaborators, exchange OBO tokens, publish registry records, or run the A2A
-  server path. Do not treat it as working multi-agent collaboration (tracked in `docs/REMEDIATION.md`).
+- **Multi-agent (A2A) — built, not yet live-validated**: the runtime role is granted
+  `InvokeAgentRuntime` on allow-listed collaborator runtimes (plus OBO token exchange and Agent Registry
+  publish), and the harness now **consumes** `multiAgent` — supervisor orchestration adds a delegation
+  tool per collaborator (InvokeAgentRuntime), exchanges an OBO token for `auth:'obo'`, publishes a
+  registry record, and propagates a correlation id across A2A hops. Cedar still governs the *invoked*
+  agent's tools, not the A2A invoke. Proving it needs a second deployed collaborator agent
+  (`docs/REMEDIATION.md` Gate 5).
 - **Use cases**: a reusable **Strands harness** (`use-cases/_harness/`: `agent.py` + `render.py`
   manifest compiler + ARM64 Dockerfile) and **citizen-311** — a manifest-driven agent whose tool
   targets and Cedar policies are deployed onto the gateway from the manifest.
@@ -89,7 +91,8 @@ controls that were provisioned but not wired end to end; those critical defects 
 | Human identity (Cognito groups + human client) | **Integrated** | provisioned; user creation is a scripted operational step |
 | Hub / spoke cross-account integration | **Built, not live-validated** | spoke OAM link, cross-account evidence replication (+ hub inbound policy), catalog shares, per-spoke dashboard widgets — synth/nag/test-verified; needs two real accounts in one Org to close (Gate 3) |
 | Org enforcement (SCPs, StackSet, budget→SCP) | **Built, not live-validated** | SCP principal alignment fixed (platform roles named under the governed prefix + CDK exec-role exemption), delegated-admin switch, Bedrock-scoped budget, guardrail-ownership warning — synth/test-verified; needs a **test OU** to validate under active SCPs (Gate 4) |
-| Multi-agent A2A | **IAM scaffolding only** | the Python harness does not yet orchestrate collaborators — not functioning multi-agent |
+| Multi-agent A2A | **Built, not live-validated** | the harness now orchestrates — delegation tool per collaborator (InvokeAgentRuntime), OBO exchange, registry publish, correlation id; needs a second deployed agent to prove (Gate 5) |
+| Private networking (VPC) | **Built, not live-validated** | `agentcore.network: VPC` places Runtime + Browser in the customer VPC (subnets/SGs); needs live egress/PrivateLink validation |
 | CloudWatch Omni Space | **Synth-tested** | needs a real Omni domain + live telemetry validation |
 
 **Maturity legend:** *live-tested* (run against AWS post-fix) · *integrated* (wired across constructs,
@@ -100,8 +103,9 @@ critical wiring closed and **validated live in a real account** (2026-10-29) ✅
 hub/spoke — **integration built** (OAM links, evidence replication, catalog shares); cross-account
 live-validation pending (needs two accounts in one Org); (4) org enforcement — **principal
 alignment + delegated-admin + budget scope built**; live validation pending (needs a test OU); (5)
-optional A2A / Omni / private networking as
-separate profiles. See `docs/REMEDIATION.md` for the findings-to-fixes map + Gate-2 evidence and
+optional capabilities — **A2A orchestration,
+private VPC networking, and Memory use are built**; A2A/VPC/Omni live validation needs a second agent /
+VPC / Omni domain. See `docs/REMEDIATION.md` for the findings-to-fixes map + Gate-2 evidence and
 `docs/CONTROLS.md` for per-control status.
 
 **Packaging note:** CDK synthesizes CloudFormation but these are **not four prepackaged CloudFormation

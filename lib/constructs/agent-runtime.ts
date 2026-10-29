@@ -99,6 +99,23 @@ export class AgentRuntime extends Construct {
       }),
     );
 
+    // AgentCore Memory read/write so the harness can persist + recall case events (Gate 5 memory use),
+    // scoped to this account's memory stores.
+    if (config.agentcore.enableMemory) {
+      this.role.addToPolicy(
+        new iam.PolicyStatement({
+          sid: 'AgentMemory',
+          actions: [
+            'bedrock-agentcore:CreateEvent',
+            'bedrock-agentcore:ListEvents',
+            'bedrock-agentcore:RetrieveMemoryRecords',
+            'bedrock-agentcore:GetMemoryRecord',
+          ],
+          resources: [`arn:${stack.partition}:bedrock-agentcore:${stack.region}:${stack.account}:memory/*`],
+        }),
+      );
+    }
+
     // Human-in-the-loop: the agent starts the approval state machine for consequential actions instead
     // of performing them. The SM name is deterministic, so this grants StartExecution without a
     // cross-stack reference (Controls, which owns the SM, deploys after AgentPlatform).
@@ -158,12 +175,18 @@ export class AgentRuntime extends Construct {
     const envVars = { ...(environment ?? {}), ...maEnv };
 
     const allowedClients = identity.allowedClients.length ? identity.allowedClients : undefined;
+    // Private networking (Gate 5): place the runtime in the customer VPC when configured.
+    const net = config.agentcore.network;
+    const networkConfiguration =
+      net?.mode === 'VPC'
+        ? { networkMode: 'VPC', networkModeConfig: { subnets: net.subnetIds!, securityGroups: net.securityGroupIds! } }
+        : { networkMode: 'PUBLIC' };
     this.runtime = new bac.CfnRuntime(this, 'Runtime', {
       agentRuntimeName: name,
       description: `Governed agent runtime for ${config.customerName}`,
       roleArn: this.role.roleArn,
       agentRuntimeArtifact: { containerConfiguration: { containerUri: imageUri } },
-      networkConfiguration: { networkMode: 'PUBLIC' },
+      networkConfiguration,
       protocolConfiguration: config.agentcore.protocol ?? 'HTTP',
       environmentVariables: Object.keys(envVars).length ? envVars : undefined,
       authorizerConfiguration: {

@@ -576,3 +576,44 @@ test('gate4: StackSet runs as DELEGATED_ADMIN when configured (F13)', () => {
   );
   t.hasResourceProperties('AWS::CloudFormation::StackSet', { CallAs: 'DELEGATED_ADMIN' });
 });
+
+// ---- Gate 5: private networking + A2A orchestration + memory (optional capabilities) ----
+
+test('gate5: runtime + browser join the customer VPC when network mode is VPC', () => {
+  const t = agentPlatformTemplate((c) => {
+    c.agentcore.runtimeImageUri = '111111111111.dkr.ecr.us-east-1.amazonaws.com/agent:latest';
+    c.agentcore.enableBrowser = true;
+    c.agentcore.network = { mode: 'VPC', subnetIds: ['subnet-aaa', 'subnet-bbb'], securityGroupIds: ['sg-123'] };
+  });
+  t.hasResourceProperties('AWS::BedrockAgentCore::Runtime', {
+    NetworkConfiguration: Match.objectLike({
+      NetworkMode: 'VPC',
+      NetworkModeConfig: Match.objectLike({ Subnets: ['subnet-aaa', 'subnet-bbb'], SecurityGroups: ['sg-123'] }),
+    }),
+  });
+  t.hasResourceProperties('AWS::BedrockAgentCore::BrowserCustom', {
+    NetworkConfiguration: Match.objectLike({
+      NetworkMode: 'VPC',
+      VpcConfig: Match.objectLike({ Subnets: ['subnet-aaa', 'subnet-bbb'] }),
+    }),
+  });
+});
+
+test('gate5: runtime stays PUBLIC by default (no network config)', () => {
+  const t = agentPlatformTemplate((c) => {
+    c.agentcore.runtimeImageUri = '111111111111.dkr.ecr.us-east-1.amazonaws.com/agent:latest';
+  });
+  t.hasResourceProperties('AWS::BedrockAgentCore::Runtime', {
+    NetworkConfiguration: Match.objectLike({ NetworkMode: 'PUBLIC' }),
+  });
+});
+
+test('config: VPC network mode requires subnets + security groups', () => {
+  const fs = require('fs'); const os = require('os'); const path = require('path');
+  const c = JSON.parse(JSON.stringify(loadConfig('config/platform.example.json'))) as PlatformConfig;
+  c.agentcore.network = { mode: 'VPC' };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'govai-net-'));
+  const f = path.join(dir, 'net.json');
+  fs.writeFileSync(f, JSON.stringify(c));
+  expect(() => loadConfig(f)).toThrow(/subnetIds and securityGroupIds/);
+});

@@ -18,7 +18,7 @@ synth/nag/unit-verified locally; items needing multi-account or live AWS validat
 | F07 | Hub/spoke connectivity is mostly intent | 🟡→built | OAM sink org-scoped; **now built (Gate 3): spoke `AWS::Oam::Link` to the hub sink, cross-account S3 evidence replication (spoke→hub archive, with replication role + hub inbound bucket/KMS policy), Service Catalog portfolio shares, and per-spoke dashboard widgets.** Synth/nag/test-verified; **not yet live-validated across two accounts** (needs a hub+spoke in one Org) |
 | F08 | Human identity setup missing from the reproducible path | ✅ | `identity.humanAuth` provisions groups + a human app client; `scripts/create-human-user.sh`; audit identity derived from the verified JWT subject |
 | F09 | Model allowlist broad/ineffective | ✅ | Interceptor gates only on an exact model-id key (opt-in), exact match, explicit unmapped-group handling; runtime IAM scoped to `allowedModelIds` |
-| F10 | Multi-agent not implemented in the harness | 🟡 | Relabelled **IAM scaffolding, not orchestration** in README/CONTROLS; harness orchestration tracked (Gate 5) |
+| F10 | Multi-agent not implemented in the harness | 🟡→built | **Gate 5: the harness now consumes MULTI_AGENT — supervisor orchestration builds a delegation tool per remote collaborator (InvokeAgentRuntime), OBO token exchange (GetWorkloadAccessToken) for `auth:'obo'`, best-effort registry publish, and a correlation id propagated across A2A hops.** Implemented but **not live-validated** (needs a second deployed collaborator agent); newer API param/response shapes must be confirmed live |
 | F11 | Existing-account logging overwritten/deleted | ✅ | Ownership modes (create/adopt/manage): refuses to overwrite a pre-existing config, restores it on teardown |
 | F12 | Fresh-account observability incomplete | ✅ | Adds the X-Ray→CloudWatch Logs resource policy and honors `observabilityIndexingPercentage` (UpdateIndexingRule) |
 | F13 | Org prerequisites / delegated admin not executable | 🟡→built | `org.delegatedAdmin` switches the Guard-hook StackSet to `CallAs: DELEGATED_ADMIN` (else `SELF`, management-account-first); the loader warns if the org floor guardrail is not management-account-owned. Management-account path is the supported default; delegated-admin still needs live validation |
@@ -82,4 +82,9 @@ the full citizen-311 workflow end to end. All acceptance scenarios passed:
   self-lockout) and prove governed inference, upgrades, incident controls, and rollback work while the
   SCPs are active; test account remove/re-add, StackSet failures, hook WARN→FAIL, and budget-action
   recovery. Blocked here: the test account is not in an Organization.
-- **Gate 5 (optional):** implement/test A2A orchestration, Omni live telemetry, private networking.
+- **Gate 5 (optional capabilities):** **built** — private VPC networking for Runtime + Browser
+  (`agentcore.network`), A2A supervisor orchestration in the harness (collaborator invoke + OBO +
+  registry publish + correlation id), and Memory read/write use in the harness. Synth/nag/test-verified.
+  **Still required to CLOSE:** live validation — a second deployed collaborator agent for A2A (real
+  remote call + identity propagation + trace continuity), actual VPC egress/PrivateLink behaviour, and
+  Omni live telemetry. These need environments not available here (second agent, VPC, Omni domain).

@@ -32,6 +32,96 @@ HITL_SM_ARN = os.environ.get("HITL_STATE_MACHINE_ARN", "")
 CONSEQUENTIAL_ACTION = os.environ.get("CONSEQUENTIAL_ACTION", "submit_service_request")
 GATEWAY_URL_ENV = os.environ.get("GATEWAY_URL", "")
 GATEWAY_SSM_PARAM = os.environ.get("GATEWAY_SSM_PARAM", "")
+# Multi-agent (A2A) config, passed in by the AgentPlatform stack. Orchestration is OFF unless enabled.
+# NOTE: implemented but NOT live-validated — it needs a second deployed collaborator agent to invoke.
+try:
+    MULTI_AGENT = json.loads(os.environ.get("MULTI_AGENT", "{}"))
+except Exception:
+    MULTI_AGENT = {}
+WORKLOAD_IDENTITY_ARN = os.environ.get("WORKLOAD_IDENTITY_ARN", "")
+MEMORY_ID = os.environ.get("MEMORY_ID", "")
+
+
+def _save_memory(subject, case_id, correlation_id, summary):
+    """Persist a case-outcome event to AgentCore Memory when a memory store is provisioned (Gate 5:
+    the harness actually USES Memory, not just provisions it). Best-effort; API shape confirmed live."""
+    if not MEMORY_ID:
+        return
+    try:
+        boto3.client("bedrock-agentcore", region_name=REGION).create_event(
+            memoryId=MEMORY_ID,
+            actorId=subject,
+            sessionId=correlation_id,
+            payload=[{"conversational": {"role": "ASSISTANT", "content": {"text": summary[:4000]}}}],
+        )
+        log.info("memory_event_saved case_id=%s", case_id)
+    except Exception as exc:
+        log.info("memory save skipped/failed (non-fatal): %s", exc)
+
+
+def _collaborator_tools(subject, case_id, correlation_id, user_token):
+    """Build one delegation tool per remote collaborator (supervisor orchestration). Each tool invokes
+    the collaborator's AgentCore Runtime, exchanges an OBO token when the collaborator requires it, and
+    propagates the correlation id so the whole case is one auditable chain. Cedar governs the invoked
+    agent's TOOLS at its own gateway — this only authorizes the A2A invoke.
+
+    API parameter/response shapes for InvokeAgentRuntime / GetWorkloadAccessToken are newer and must be
+    confirmed against the live SDK; this path is implemented but not yet live-validated."""
+    if not MULTI_AGENT.get("enabled"):
+        return []
+    collaborators = MULTI_AGENT.get("remoteCollaborators") or []
+    acc = boto3.client("bedrock-agentcore", region_name=REGION)
+    tools = []
+    for collab in collaborators:
+        name = collab.get("name")
+        runtime_arn = collab.get("runtimeArn")
+        if not name or not runtime_arn:
+            continue
+
+        def _make(collab=collab, name=name, runtime_arn=runtime_arn):
+            @tool(name="invoke_%s" % name)
+            def _invoke(task: str) -> dict:
+                """Delegate a subtask to the %s collaborator agent; returns its result.""" % name
+                payload = {"prompt": task, "correlation_id": correlation_id, "case_id": case_id, "delegated_by": subject}
+                if collab.get("auth") == "obo" and user_token and WORKLOAD_IDENTITY_ARN:
+                    try:
+                        wat = acc.get_workload_access_token(
+                            workloadIdentityArn=WORKLOAD_IDENTITY_ARN, userToken=user_token
+                        )
+                        payload["access_token"] = wat.get("workloadAccessToken") or wat.get("accessToken")
+                    except Exception as exc:
+                        log.warning("OBO token exchange failed for %s: %s", name, exc)
+                try:
+                    resp = acc.invoke_agent_runtime(
+                        agentRuntimeArn=runtime_arn,
+                        runtimeSessionId=correlation_id,
+                        contentType="application/json",
+                        accept="application/json",
+                        payload=json.dumps(payload).encode(),
+                    )
+                    body = resp.get("response")
+                    return json.loads(body.read()) if body else {"status": "no_response"}
+                except Exception as exc:
+                    log.warning("A2A invoke of %s failed: %s", name, exc)
+                    return {"error": "collaborator_invoke_failed", "collaborator": name, "detail": str(exc)[:200]}
+
+            return _invoke
+
+        tools.append(_make())
+    return tools
+
+
+def _publish_registry_record():
+    """Publish this agent's discovery record (draft) so collaborators can find it (H3). Best-effort;
+    not live-validated."""
+    if not MULTI_AGENT.get("publishToRegistry"):
+        return
+    try:
+        boto3.client("bedrock-agentcore", region_name=REGION).create_registry_record(
+            description="Governed agent (auto-published at startup).",
+        )
+    except Exception as exc:
+        log.info("registry publish skipped/failed (non-fatal): %s", exc)
 
 # The governed workflow prompt is manifest-driven (passed via --env at launch). Fallback below keeps
 # the agent safe/generic if it is missing.
@@ -85,11 +175,17 @@ def invoke(payload, context=None):
     if not subject:
         return {"error": "access_token is not a decodable JWT; a verified human identity is required"}
     requester = display
+    # A correlation id threads this case across A2A hops and traces (propagated to collaborators).
+    correlation_id = p.get("correlation_id") or ("case-%s-%s" % (case_id, subject[:8])).replace(" ", "-")
     prompt = p.get("prompt") or (
         "Process the intake for case %s (requester %s). Run the governed workflow end to end and "
         "request human sign-off with the case id and requester." % (case_id, requester)
     )
-    log.info("invocation subject=%s requester=%s case_id=%s token_present=%s", subject, requester, case_id, bool(token))
+    log.info(
+        "invocation subject=%s requester=%s case_id=%s corr=%s token_present=%s multi_agent=%s",
+        subject, requester, case_id, correlation_id, bool(token), bool(MULTI_AGENT.get("enabled")),
+    )
+    _publish_registry_record()
 
     gw = _gateway_url()
     if not gw:
@@ -143,9 +239,13 @@ def invoke(payload, context=None):
             log.info("hitl_signoff_requested actor=%s case=%s digest=%s", subject, case_id, digest[:12])
             return {"status": "pending_approval", "executionArn": resp["executionArn"], "actionDigest": digest}
 
-        agent = Agent(model=model, tools=tools + [request_human_signoff], system_prompt=SYSTEM)
+        # Supervisor orchestration (Gate 5): add a delegation tool per remote collaborator so the agent
+        # can hand subtasks to other governed agents (A2A). Empty unless multiAgent.enabled.
+        collab_tools = _collaborator_tools(subject, case_id, correlation_id, token)
+        agent = Agent(model=model, tools=tools + [request_human_signoff] + collab_tools, system_prompt=SYSTEM)
         result = agent(prompt)
     log.info("invocation_complete requester=%s case_id=%s result_chars=%d", requester, case_id, len(str(result)))
+    _save_memory(subject, case_id, correlation_id, str(result))
     return {"result": str(result), "tools_available": names}
 
 

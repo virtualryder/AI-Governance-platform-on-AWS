@@ -22,11 +22,18 @@ export class AgentTools extends Construct {
     const { config } = props;
     const base = `govai_${config.customerName.replace(/-/g, '_')}_${config.environment}`;
 
+    const net = config.agentcore.network;
     if (config.agentcore.enableBrowser) {
+      // Private networking (Gate 5): put the browser in the customer VPC when configured, so web
+      // egress goes through the customer's controlled path rather than AgentCore-managed PUBLIC egress.
+      const browserNetwork =
+        net?.mode === 'VPC'
+          ? { networkMode: 'VPC', vpcConfig: { subnets: net.subnetIds!, securityGroups: net.securityGroupIds! } }
+          : { networkMode: 'PUBLIC' };
       this.browser = new bac.CfnBrowserCustom(this, 'Browser', {
         name: `${base}_browser`,
         description: `Governed browser tool for ${config.customerName}`,
-        networkConfiguration: { networkMode: 'PUBLIC' },
+        networkConfiguration: browserNetwork,
       });
     }
 

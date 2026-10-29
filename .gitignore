@@ -12,3 +12,7 @@ synth-err.log
 # Real/customer config files may carry account IDs — only *.example.json is tracked.
 config/*.json
 !config/*.example.json
+
+# Python bytecode
+__pycache__/
+*.pyc

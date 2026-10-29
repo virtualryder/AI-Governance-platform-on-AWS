@@ -15,7 +15,7 @@ Legend — Modes: **S**=standalone · **P**=spoke · **H**=hub · **O**=org.
 - **Step 5 (cont.):** F1 (Guard Hook) done — `AWS::CloudFormation::GuardHook` in WARN over RESOURCE+STACK ops, evaluating `policies/guard/baseline.guard` (S3 BPA+encryption, guardrail CMK, gateway CUSTOM_JWT); org-wide rollout via StackSets (F2) is the documented distribution.
 - **Step 5 (cont.):** E3 (cost kill switch) done — a detached cost-freeze SCP (deny all Bedrock inference, deployer-exempt) auto-attached to the Agentic OU by an `AWS::Budgets::BudgetsAction` (`APPLY_SCP_POLICY`) at 100% of the monthly budget.
 - **Step 5 (cont.):** F3 (Service Catalog) done — hub portfolio + a "governed data workspace" product (CMK + BPA + TLS + versioned bucket) for self-service compliant provisioning.
-- **Step 5 remaining (hub/org, untestable without an Organization):** D4 (CloudWatch Omni), F2 (Guard-hook StackSets rollout), F4 (Registry + RAM, no CFN type), H3, SRA detective rules.
+- **Step 5 remaining (hub/org, untestable without an Organization):** D4 (CloudWatch Omni), F2 (Guard-hook StackSets rollout), F4 (Registry + RAM) **built** (custom resource — unvalidated live). Remaining: H3, SRA detective rules.
 Controls not yet listed are design targets realized in later steps.
 
 ## A. Evidence & audit (per-account baseline)

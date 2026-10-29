@@ -183,6 +183,7 @@ test('governance hub: central log archive + OAM sink in hub mode; collapsed in s
   // Service Catalog self-service portfolio + product.
   hub.resourceCountIs('AWS::ServiceCatalog::Portfolio', 1);
   hub.resourceCountIs('AWS::ServiceCatalog::CloudFormationProduct', 1);
+  hub.resourceCountIs('Custom::AgentRegistry', 1); // governed discovery (no CFN type)
 
   const collapsed = Template.fromStack(
     new GovernanceHubStack(new App(), 'HUBC', { config, mode: 'standalone', env: { region: config.region } }),

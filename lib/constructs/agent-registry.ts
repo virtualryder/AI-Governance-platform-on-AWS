@@ -19,9 +19,12 @@ export interface AgentRegistryProps {
  * publish records into it at runtime (`multiAgent.publishToRegistry`). When an organization ID is
  * configured, the registry is RAM-shared to the org so spoke accounts can discover agents.
  *
- * NOTE: UNVALIDATED on live AWS — Agent Registry is a newer service. `installLatestAwsSdk` pulls a
- * current SDK (the Lambda runtime's bundled SDK may predate the control-plane client). Confirm the
- * CreateRegistry/DeleteRegistry parameter shape and run once before relying on it in production.
+ * NOTE: NOT YET LIVE-VALIDATED — Agent Registry is a newer service. `installLatestAwsSdk` pulls a
+ * current SDK (the Lambda runtime's bundled SDK may predate the control-plane client). API contract
+ * grounded against AWS docs (2026-10-29): CreateRegistry returns `registryArn` (HTTP 202, async —
+ * status goes CREATING→READY), and DeleteRegistry's `registryId` URI param accepts the ARN and
+ * requires an empty registry. The create does NOT wait for READY here; if a consumer (e.g. the RAM
+ * share) needs a READY registry, add a GetRegistry waiter before relying on it in production.
  */
 export class AgentRegistry extends Construct {
   readonly registryArn: string;
@@ -38,11 +41,14 @@ export class AgentRegistry extends Construct {
         service: 'bedrock-agentcore-control',
         action: 'CreateRegistry',
         parameters: { name },
-        physicalResourceId: PhysicalResourceId.fromResponse('registryId'),
+        // CreateRegistry returns `registryArn` (not `registryId`); DeleteRegistry accepts the ARN.
+        physicalResourceId: PhysicalResourceId.fromResponse('registryArn'),
       },
       onDelete: {
         service: 'bedrock-agentcore-control',
         action: 'DeleteRegistry',
+        // DeleteRegistry requires an empty registry; its `registryId` URI param accepts the ARN,
+        // which is the physical id captured from CreateRegistry's `registryArn`.
         parameters: { registryId: new PhysicalResourceIdReference() },
       },
       policy: AwsCustomResourcePolicy.fromStatements([

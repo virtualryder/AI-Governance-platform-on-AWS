@@ -17,11 +17,13 @@ export interface AgentGatewayProps {
 }
 
 /**
- * AgentCore Gateway (MCP, CUSTOM_JWT inbound) fronted by a Cedar PolicyEngine. The engine starts in
- * LOG_ONLY by default so a first deploy observes decisions without blocking (flip to ENFORCE via
- * `agentcore.cedarMode` once tool-specific policies are validated). Baseline Cedar is rendered from
- * files per gateway (rule 7); tool-specific policies are added by the use-case once the gateway's
- * tool schema exists.
+ * AgentCore Gateway (MCP, CUSTOM_JWT inbound) fronted by a Cedar PolicyEngine. The engine enforces by
+ * default (`ENFORCE`): a forbid policy — including the emergency kill switch — only blocks when the
+ * engine is enforcing, so a governed deployment must enforce. `LOG_ONLY` (observe without blocking) is
+ * opt-in and only permitted when the config explicitly acknowledges it
+ * (`agentcore.acknowledgeNonEnforcingCedar: true`); the config loader rejects LOG_ONLY otherwise.
+ * Baseline Cedar is rendered from files per gateway (rule 7); tool-specific policies are added by the
+ * use-case once the gateway's tool schema exists.
  */
 export class AgentGateway extends Construct {
   readonly gateway: bac.CfnGateway;
@@ -104,7 +106,7 @@ export class AgentGateway extends Construct {
       protocolType: 'MCP',
       policyEngineConfiguration: {
         arn: this.policyEngine.attrPolicyEngineArn,
-        mode: config.agentcore.cedarMode ?? 'LOG_ONLY',
+        mode: config.agentcore.cedarMode ?? 'ENFORCE',
       },
       interceptorConfigurations: interceptorLambdaArn
         ? [

@@ -97,7 +97,7 @@ test('agent platform: MCP gateway with CUSTOM_JWT, Cedar engine, memory, browser
   t.hasResourceProperties('AWS::BedrockAgentCore::Gateway', {
     AuthorizerType: 'CUSTOM_JWT',
     ProtocolType: 'MCP',
-    PolicyEngineConfiguration: Match.objectLike({ Mode: 'LOG_ONLY' }),
+    PolicyEngineConfiguration: Match.objectLike({ Mode: 'ENFORCE' }), // enforcing by default (F01)
   });
   t.resourceCountIs('AWS::BedrockAgentCore::PolicyEngine', 1);
   // Baseline Cedar is NOT attached by default (AgentCore rejects a blanket permit; tools come later).
@@ -118,6 +118,39 @@ test('agent platform: memory CMK-encrypted', () => {
   t.hasResourceProperties('AWS::BedrockAgentCore::Memory', {
     EncryptionKeyArn: Match.anyValue(),
   });
+});
+
+test('config: LOG_ONLY Cedar is rejected unless explicitly acknowledged (F01)', () => {
+  const base = loadConfig('config/platform.example.json');
+  const logOnly = JSON.parse(JSON.stringify(base)) as PlatformConfig;
+  logOnly.agentcore.cedarMode = 'LOG_ONLY';
+  // loadConfig runs validate(); reconstruct the validation by re-serialising through a temp file is
+  // overkill — assert via the exported loader behaviour on a written temp config instead.
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'govai-cfg-'));
+  const f = path.join(dir, 'log-only.json');
+  fs.writeFileSync(f, JSON.stringify(logOnly));
+  expect(() => loadConfig(f)).toThrow(/LOG_ONLY/);
+  // With the explicit acknowledgment it loads.
+  logOnly.agentcore.acknowledgeNonEnforcingCedar = true;
+  fs.writeFileSync(f, JSON.stringify(logOnly));
+  expect(() => loadConfig(f)).not.toThrow();
+});
+
+test('hub: agent registry uses the ARN response contract (F04)', () => {
+  const c = JSON.parse(JSON.stringify(config)) as PlatformConfig;
+  const t = Template.fromStack(
+    new GovernanceHubStack(new App(), 'HUBREG', { config: c, mode: 'hub', env: { region: c.region } }),
+  );
+  // The custom resource must capture registryArn as its physical id (CreateRegistry returns
+  // registryArn, not registryId — the old response field was a deployment blocker).
+  const crs = t.findResources('Custom::AgentRegistry');
+  const props = (Object.values(crs)[0] as any).Properties;
+  const create = typeof props.Create === 'string' ? JSON.parse(props.Create) : props.Create;
+  expect(create.action).toBe('CreateRegistry');
+  expect(create.physicalResourceId.responsePath).toBe('registryArn'); // not the nonexistent registryId
 });
 
 test('agent platform: runtime + endpoint only when an image is configured', () => {

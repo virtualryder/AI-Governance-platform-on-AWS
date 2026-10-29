@@ -125,8 +125,13 @@ export interface PlatformConfig {
     memoryEventExpiryDays: number;
     accessTokenValidityMinutes: number;
     allowedModelIds: string[];
-    /** Cedar enforcement mode for the Gateway policy engine. Defaults to 'ENFORCE'. */
+    /** Cedar enforcement mode for the Gateway policy engine. Defaults to 'ENFORCE'. A forbid policy
+     * (incl. the emergency kill switch) only blocks when the engine enforces, so governed deployments
+     * must enforce. 'LOG_ONLY' is rejected by the loader unless `acknowledgeNonEnforcingCedar` is true. */
     cedarMode?: CedarMode;
+    /** Explicit, auditable acknowledgment that a 'LOG_ONLY' (non-enforcing / observe-only) Cedar
+     * deployment is intended. Required to deploy with `cedarMode: 'LOG_ONLY'`. */
+    acknowledgeNonEnforcingCedar?: boolean;
     /** Runtime inbound protocol. Defaults to 'HTTP'; 'A2A' enables agent-to-agent collaboration. */
     protocol?: RuntimeProtocol;
     enableCodeInterpreter?: boolean;
@@ -204,6 +209,12 @@ function validate(cfg: PlatformConfig): void {
   if (cfg.governance.logRetentionDays < 365 && ['phi', 'cjis'].includes(cfg.dataClassification))
     errs.push('phi/cjis workloads should retain logs >= 365 days');
   if (cfg.controls.monthlyBudgetUsd <= 0) errs.push('monthlyBudgetUsd must be > 0');
+  if (cfg.agentcore.cedarMode === 'LOG_ONLY' && !cfg.agentcore.acknowledgeNonEnforcingCedar)
+    errs.push(
+      "agentcore.cedarMode 'LOG_ONLY' is non-enforcing (observe-only): forbid policies and the kill " +
+        'switch will NOT block. Set agentcore.acknowledgeNonEnforcingCedar:true to deploy it deliberately, ' +
+        "or use 'ENFORCE' (default).",
+    );
   const ma = cfg.agentcore.multiAgent;
   if (ma?.enabled && ma.remoteCollaborators?.length && cfg.agentcore.protocol !== 'A2A')
     errs.push("remoteCollaborators require agentcore.protocol 'A2A' (agent-to-agent invoke)");

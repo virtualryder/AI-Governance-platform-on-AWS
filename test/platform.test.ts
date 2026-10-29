@@ -645,3 +645,47 @@ test('standalone profile: self-contained (no hub/org, optional capabilities off)
   expect(sa.agentcore.enableBrowser).toBe(false);
   expect(sa.agentcore.cedarMode).toBe('ENFORCE');
 });
+
+// ---- Third review: exact-group Cedar, no app-profile wildcard, self-approval, group validation ----
+
+test('review3: use-case permit matches the group as a quoted token (no lookalike match, B5)', () => {
+  const t = agentPlatformTemplate((c) => {
+    c.agentcore.useCaseManifest = 'use-cases/citizen-311/manifest.yaml';
+  });
+  const policies = t.findResources('AWS::BedrockAgentCore::Policy');
+  const permit = Object.values(policies).find((p: any) =>
+    JSON.stringify(p.Properties.Definition).includes('permit('),
+  ) as any;
+  const stmt = permit.Properties.Definition.Cedar.Statement as string;
+  expect(stmt).toContain('like "*\\"csr-agents\\"*"'); // quoted token, not bare substring
+  expect(stmt).not.toContain('like "*csr-agents*"');
+});
+
+test('review3: runtime inference IAM has no account-wide application-inference-profile wildcard (#1)', () => {
+  const t = agentPlatformTemplate((c) => {
+    c.agentcore.runtimeImageUri = '111111111111.dkr.ecr.us-east-1.amazonaws.com/agent:latest';
+  });
+  const policies = t.findResources('AWS::IAM::Policy');
+  const body = JSON.stringify(Object.values(policies));
+  expect(body).not.toContain('application-inference-profile/*');
+});
+
+test('review3: runtime guardrail deny includes an exact-guardrail StringNotEquals (#2)', () => {
+  const t = Template.fromStack(
+    new GovernanceBaselineStack(new App(), 'GRDENY', { config, mode: 'standalone', env: { region: config.region } }),
+  );
+  const mps = t.findResources('AWS::IAM::ManagedPolicy');
+  const body = JSON.stringify(Object.values(mps));
+  expect(body).toContain('DenyUnapprovedGuardrail');
+  expect(body).toContain('StringNotEquals');
+});
+
+test('config: invalid human group name is rejected (#10)', () => {
+  const fs = require('fs'); const os = require('os'); const path = require('path');
+  const c = JSON.parse(JSON.stringify(loadConfig('config/platform.example.json'))) as PlatformConfig;
+  c.identity = { humanAuth: { enabled: true, groups: ['x"csr-agents'] } } as any;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'govai-grp-'));
+  const f = path.join(dir, 'g.json');
+  fs.writeFileSync(f, JSON.stringify(c));
+  expect(() => loadConfig(f)).toThrow(/invalid characters/);
+});

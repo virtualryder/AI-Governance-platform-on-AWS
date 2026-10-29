@@ -21,6 +21,8 @@ export interface HumanInTheLoopProps {
    * tool). Platform-wired, never supplied by the agent. Empty => the executor records the decision but
    * performs no side effect. */
   executorTargetArn?: string;
+  /** The platform-pinned consequential tool name the executor invokes (never from the SM input). */
+  executorToolName?: string;
 }
 
 /**
@@ -49,7 +51,7 @@ export class HumanInTheLoop extends Construct {
 
   constructor(scope: Construct, id: string, props: HumanInTheLoopProps) {
     super(scope, id);
-    const { config, encryptionKey, executorTargetArn } = props;
+    const { config, encryptionKey, executorTargetArn, executorToolName } = props;
     const isProd = config.environment === 'prod';
 
     this.approvalTopic = new sns.Topic(this, 'Topic', {
@@ -79,6 +81,7 @@ export class HumanInTheLoop extends Construct {
       environment: {
         APPROVALS_TABLE: this.approvals.tableName,
         TARGET_ARN: executorTargetArn ?? '',
+        CONSEQUENTIAL_TOOL: executorToolName ?? '',
       },
     });
     this.approvals.grantReadWriteData(this.executorFn);
@@ -110,13 +113,15 @@ export class HumanInTheLoop extends Construct {
       topic: this.approvalTopic,
       integrationPattern: sfn.IntegrationPattern.WAIT_FOR_TASK_TOKEN,
       subject: 'Governed AI: human approval required',
+      // NOTE: the action ARGUMENTS are deliberately NOT in the notification (review #9) — they can
+      // carry PHI/CJIS data and the SNS topic may fan out to a broad distribution list. The approver
+      // reviews the full proposal (incl. args) in the approvals ledger / console by action digest.
       message: sfn.TaskInput.fromObject({
         taskToken: sfn.JsonPath.taskToken,
         actionDigest: sfn.JsonPath.stringAt('$.actionDigest'),
         action: sfn.JsonPath.stringAt('$.action'),
         actor: sfn.JsonPath.stringAt('$.actor'),
         caseId: sfn.JsonPath.stringAt('$.caseId'),
-        args: sfn.JsonPath.objectAt('$.args'),
       }),
       taskTimeout: sfn.Timeout.duration(Duration.hours(24)),
       resultPath: '$.approval', // {approved, approver, approvedAt}
@@ -157,10 +162,27 @@ export class HumanInTheLoop extends Construct {
       resultPath: '$.approvalError',
     });
 
+    // The execution is only a SUCCESS if the executor returned status 'completed' (review #5). A
+    // 'failed'/'rejected'/'unknown' result, or a Lambda error/timeout, must NOT end as Succeeded.
+    const executionFailed = new sfn.Fail(this, 'ExecutionFailed', {
+      error: 'ExecutionNotCompleted',
+      cause: 'Executor did not report status=completed (see the approvals ledger for FAILED/UNKNOWN).',
+    });
+    // A Lambda timeout after the executor claimed the row leaves it EXECUTING; surface it (the ledger
+    // row is the reconciliation anchor via the idempotency key) rather than silently succeeding.
+    execute.addCatch(executionFailed, { errors: ['States.ALL'], resultPath: '$.executeError' });
+
+    const resultChoice = new sfn.Choice(this, 'ExecutionSucceeded?')
+      .when(
+        sfn.Condition.stringEquals('$.execution.Payload.status', 'completed'),
+        new sfn.Succeed(this, 'Completed'),
+      )
+      .otherwise(executionFailed);
+
     const definition = recordProposed
       .next(requestApproval)
       .next(execute)
-      .next(new sfn.Succeed(this, 'Completed'));
+      .next(resultChoice);
 
     const logGroup = new logs.LogGroup(this, 'Logs', {
       encryptionKey,

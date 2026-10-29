@@ -45,7 +45,10 @@ export class ControlsStack extends PlatformStack {
       const executorTargetArn = this.config.agentcore.useCaseManifest
         ? ssm.StringParameter.valueForStringParameter(this, `${this.paramPrefix}/agent-platform/consequential-target-arn`)
         : undefined;
-      this.hitl = new HumanInTheLoop(this, 'Hitl', { config: this.config, encryptionKey, executorTargetArn });
+      const executorToolName = this.config.agentcore.useCaseManifest
+        ? ssm.StringParameter.valueForStringParameter(this, `${this.paramPrefix}/agent-platform/consequential-tool`)
+        : undefined;
+      this.hitl = new HumanInTheLoop(this, 'Hitl', { config: this.config, encryptionKey, executorTargetArn, executorToolName });
     }
 
     if (this.config.controls.detectiveConfigRules) {

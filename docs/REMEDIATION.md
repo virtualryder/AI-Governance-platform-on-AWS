@@ -17,6 +17,32 @@ A2A-enabled on the current evidence.
 
 ---
 
+## Third review (commit `3a88bb4`, 29 Oct 2026) — pre-second-operator fixes
+
+A prospective second operator reproduced the local gate from two clean checkouts (build/jest/pytest/
+synth/nag all pass) and found issues to fix **before** the live acceptance run. All fixed (locally
+verified); the live acceptance run is the second operator's.
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | Runtime role granted `application-inference-profile/*` account-wide — an app profile can wrap any model, bypassing `allowedModelIds` | Removed the wildcard; only explicit `agentcore.allowedApplicationInferenceProfileArns` are granted (default none) |
+| 2 | Guardrail deny was `Null:{GuardrailIdentifier}` only — any guardrail satisfied it | Added a `DenyUnapprovedGuardrail` statement: `StringNotEquals bedrock:GuardrailIdentifier` against the approved id / ARN / ARN:version (needs live validation of the exact value form) |
+| 3 | HITL approver was self-asserted free text | Executor refuses `approver == actor` (separation of duties); approval invoke already restricted to the supervisor role; full authenticated-approver identity (API GW authorizer) noted as a follow-up |
+| 4 | Executor trusted the tool name from its input | Executor uses the platform-pinned `CONSEQUENTIAL_TOOL` (published from the manifest), not the input action |
+| 5 | A failed/stuck executor still ended the state machine as Succeeded | Added a Choice on `$.execution.Payload.status == completed` (else Fail) and a Catch on the Execute task (timeout/error → Fail; ledger UNKNOWN is the reconciliation anchor) |
+| 6 | `render.py` still emitted the lookalike-vulnerable `like "*grp*"` permit | render.py now emits the quoted-token permit `*"grp"*` (matches the CDK path) |
+| 7 | No regression test for the quoted-token permit | Added jest tests: quoted-token permit, no app-profile wildcard, exact-guardrail deny present, group-name validation |
+| 8 | Kill-switch had a non-enforcing `create_policy` fallback | Dropped it (boto3 is pinned, so `enforcementMode=ACTIVE` always applies) — no silent false-containment |
+| 9 | Approval SNS message carried the action args (PHI/CJIS to a distribution list) | Args removed from the notification; approver reviews the full proposal in the ledger by digest |
+| 10 | Group names flowed into Cedar unescaped (a quote could defeat the match) | Config loader validates `identity.humanAuth.groups` against a safe character set |
+
+**Still open (acknowledged):** fully authenticated approver identity (vs role-gated + self-approval
+check), real-backend idempotency/reconciliation, and the live acceptance run itself — which, per the
+reviewer, must be a **different account** and a **genuinely separate operator** to count as *release
+accepted*.
+
+---
+
 ## Second review (commit `c18c586`, 29 Oct 2026) — standalone MVP blockers
 
 A second review focused on the standalone MVP + SA handoff. Maturity labels: **implemented** (builds,

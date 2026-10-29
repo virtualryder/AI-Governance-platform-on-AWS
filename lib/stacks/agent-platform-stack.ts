@@ -151,6 +151,9 @@ export class AgentPlatformStack extends PlatformStack {
     if (this.useCase?.consequentialTargetArn) {
       // The HITL executor (Controls stack) performs this action after approval — the agent is forbidden it.
       this.publish('agent-platform/consequential-target-arn', this.useCase.consequentialTargetArn, 'HITL executor target Lambda ARN');
+      if (this.useCase.consequentialTool) {
+        this.publish('agent-platform/consequential-tool', this.useCase.consequentialTool, 'HITL executor pinned tool name');
+      }
     }
     this.publish('agent-platform/version', '0.2.0', 'AgentPlatform stack version');
 

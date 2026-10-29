@@ -148,9 +148,11 @@ def main():
         kind = p["kind"]
         if kind == "permit":
             grp = p.get("role_group", ident["reviewer_group"])
+            # Match the group as a QUOTED token so a lookalike (e.g. "csr-agents-readonly") does NOT
+            # satisfy a permit for "csr-agents" (review #6 — mirror the CDK use-case construct).
             stmt = ('permit(principal, action, resource is AgentCore::Gateway) when { '
                     'principal.hasTag("cognito:groups") && '
-                    'principal.getTag("cognito:groups") like "*%s*" };' % grp)
+                    'principal.getTag("cognito:groups") like "*\\"%s\\"*" };' % grp)
             mode = p.get("validation_mode", "FAIL_ON_ANY_FINDINGS")
         elif kind == "forbid":
             aid = action_id(p["action"])

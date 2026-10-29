@@ -21,12 +21,23 @@ TABLE = os.environ["APPROVALS_TABLE"]
 # The single, configured execution target (use-case submit tool Lambda). The AGENT cannot influence
 # this — it is wired by the platform, not supplied in the execution input. Empty => record-only.
 TARGET_ARN = os.environ.get("TARGET_ARN", "")
+# The platform-pinned consequential tool name. The executor uses THIS, not event["action"] — the
+# runtime can start an execution with any input, so the tool to invoke must not come from the input
+# (review #4). Falls back to the input action only if unset (legacy).
+CONSEQUENTIAL_TOOL = os.environ.get("CONSEQUENTIAL_TOOL", "")
 
 
 def handler(event, _context):
     digest = event["actionDigest"]
     target = TARGET_ARN
     approver = event.get("approver", "unknown")
+    actor = event.get("actor", "")
+    tool = CONSEQUENTIAL_TOOL or event.get("action", "")
+
+    # Separation of duties (review #3): the approver must not be the actor who proposed the action.
+    if approver and actor and approver == actor:
+        _set_status(digest, "REJECTED", {"executed": False, "error": "self_approval_forbidden", "actor": actor})
+        return {"status": "rejected", "actionDigest": digest, "executed": False, "error": "self_approval_forbidden"}
 
     # Claim the action: PENDING -> EXECUTING. Fails if it is not PENDING (already executing/completed),
     # which is the exactly-once / replay guard.
@@ -56,7 +67,7 @@ def handler(event, _context):
     # reads the tool name from the Lambda client context and the args from the body; mirror that, and
     # pass a stable idempotency key (the action digest) so a REAL backend can dedupe.
     client_context = base64.b64encode(
-        json.dumps({"custom": {"bedrockAgentCoreToolName": event["action"], "idempotencyKey": digest}}).encode()
+        json.dumps({"custom": {"bedrockAgentCoreToolName": tool, "idempotencyKey": digest}}).encode()
     ).decode()
     try:
         resp = lam.invoke(

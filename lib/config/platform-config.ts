@@ -175,6 +175,10 @@ export interface PlatformConfig {
     memoryEventExpiryDays: number;
     accessTokenValidityMinutes: number;
     allowedModelIds: string[];
+    /** Explicit application-inference-profile ARNs the runtime may invoke. Default none — the platform
+     * never grants `application-inference-profile/*` account-wide (that would let any profile wrap an
+     * unapproved model and bypass allowedModelIds, review #1). Add specific ARNs only if used. */
+    allowedApplicationInferenceProfileArns?: string[];
     /** Cedar enforcement mode for the Gateway policy engine. Defaults to 'ENFORCE'. A forbid policy
      * (incl. the emergency kill switch) only blocks when the engine enforces, so governed deployments
      * must enforce. 'LOG_ONLY' is rejected by the loader unless `acknowledgeNonEnforcingCedar` is true. */
@@ -270,6 +274,11 @@ function validate(cfg: PlatformConfig): void {
   // Fail closed: an empty model allowlist must NOT fall through to a broad foundation-model/* grant.
   if (!cfg.agentcore.allowedModelIds?.length)
     errs.push('agentcore.allowedModelIds must be non-empty (empty would broaden runtime inference to all models)');
+  // Group names flow into the Cedar quoted-token match; a name containing a quote/backslash/wildcard
+  // could break or widen it. Restrict to safe characters (review #10).
+  for (const grp of cfg.identity?.humanAuth?.groups ?? [])
+    if (!/^[A-Za-z0-9][A-Za-z0-9 _.@/+=:-]{0,127}$/.test(grp))
+      errs.push(`identity.humanAuth group "${grp}" has invalid characters (allowed: letters, digits, _.@/+=:- and space)`);
   const net = cfg.agentcore.network;
   if (net?.mode === 'VPC' && (!net.subnetIds?.length || !net.securityGroupIds?.length))
     errs.push("agentcore.network.mode 'VPC' requires non-empty subnetIds and securityGroupIds");

@@ -72,6 +72,10 @@ export class AgentRuntime extends Construct {
           `arn:${stack.partition}:bedrock:*::foundation-model/*`,
           `arn:${stack.partition}:bedrock:*:${stack.account}:inference-profile/*`,
         ];
+    // Application inference profiles can wrap ANY model, so an account-wide
+    // `application-inference-profile/*` grant would defeat allowedModelIds (review finding #1). Grant
+    // ONLY explicitly allow-listed application-profile ARNs, if the customer configures any.
+    const appProfileResources = config.agentcore.allowedApplicationInferenceProfileArns ?? [];
     this.role.addToPolicy(
       new iam.PolicyStatement({
         sid: 'GovernedInference',
@@ -84,9 +88,7 @@ export class AgentRuntime extends Construct {
         ],
         resources: [
           ...modelResources,
-          // Customer-created application inference profiles are account-local, arbitrarily named
-          // resources; account-scope them rather than enumerate.
-          `arn:${stack.partition}:bedrock:*:${stack.account}:application-inference-profile/*`,
+          ...appProfileResources, // empty unless explicitly allow-listed (no account-wide wildcard)
           `arn:${stack.partition}:bedrock:${stack.region}:${stack.account}:guardrail/*`,
         ],
       }),

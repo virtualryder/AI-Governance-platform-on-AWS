@@ -85,15 +85,10 @@ def handler(event, _context):
             validationMode="IGNORE_ALL_FINDINGS",
         )
         try:
-            # ACTIVE = the policy blocks (not just logs). Some bundled SDKs predate this parameter;
-            # fall back to the default if the client rejects it (the engine still enforces ACTIVE policies).
-            try:
-                acc.create_policy(enforcementMode="ACTIVE", **base)
-            except Exception as exc:
-                if "enforcementMode" in str(exc):
-                    acc.create_policy(**base)
-                else:
-                    raise
+            # ACTIVE = the policy blocks (not just logs). boto3 is pinned (requirements-dev / bundling),
+            # so enforcementMode is always supported — no non-enforcing fallback (review #8): a policy
+            # created without ACTIVE would not block, a silent false-containment.
+            acc.create_policy(enforcementMode="ACTIVE", **base)
         except acc.exceptions.ConflictException:
             pass  # already engaged
         # Record a CONSERVATIVE incident state immediately: we are attempting containment, but must NOT

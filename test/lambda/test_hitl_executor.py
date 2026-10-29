@@ -128,3 +128,17 @@ def test_transport_failure_after_claim_is_unknown_and_raises():
     with pytest.raises(RuntimeError):
         executor.handler(_event(), None)
     assert ddb.status == "UNKNOWN"
+
+
+def test_self_approval_is_rejected():
+    # review #3: approver == actor must be refused (separation of duties).
+    ddb = _FakeDDB("PENDING")
+    executor.ddb = ddb
+    executor.lam = _FakeLambda()
+    evt = _event()
+    evt["actor"] = "same-person"
+    evt["approver"] = "same-person"
+    out = executor.handler(evt, None)
+    assert out["executed"] is False
+    assert out["status"] == "rejected"
+    assert executor.lam.invocations == 0

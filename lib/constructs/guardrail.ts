@@ -111,6 +111,36 @@ export class PlatformGuardrail extends Construct {
               Null: { 'bedrock:GuardrailIdentifier': 'true' },
             },
           }),
+          // Deny any inference that carries a guardrail OTHER than the approved one (review #2): a
+          // present-but-wrong guardrail must not satisfy governance. Enumerate the plausible forms of
+          // the `bedrock:GuardrailIdentifier` value (id, ARN, ARN:version) so the approved call is not
+          // false-denied while every other guardrail is. StringNotEquals does NOT match when the key is
+          // absent, so the Null deny above still covers the no-guardrail case.
+          // NOTE: needs live validation of the exact value Bedrock populates (the second-operator run).
+          new iam.PolicyStatement({
+            sid: 'DenyUnapprovedGuardrail',
+            effect: iam.Effect.DENY,
+            actions: [
+              'bedrock:InvokeModel',
+              'bedrock:InvokeModelWithResponseStream',
+              'bedrock:Converse',
+              'bedrock:ConverseStream',
+            ],
+            resources: [
+              `arn:${stack.partition}:bedrock:*::foundation-model/*`,
+              `arn:${stack.partition}:bedrock:*:${stack.account}:inference-profile/*`,
+              `arn:${stack.partition}:bedrock:*:${stack.account}:application-inference-profile/*`,
+            ],
+            conditions: {
+              'StringNotEquals': {
+                'bedrock:GuardrailIdentifier': [
+                  this.guardrailId,
+                  `arn:${stack.partition}:bedrock:${stack.region}:${stack.account}:guardrail/${this.guardrailId}`,
+                  `arn:${stack.partition}:bedrock:${stack.region}:${stack.account}:guardrail/${this.guardrailId}:${this.version.attrVersion}`,
+                ],
+              },
+            },
+          }),
         ],
       });
     }

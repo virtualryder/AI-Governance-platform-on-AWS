@@ -254,16 +254,19 @@ aws ssm get-parameters-by-path --path /governed-ai/<customer>/<env> --recursive 
 
 ## 8. Deploy a use case (activate the Runtime)
 
-The platform deploys without any agent. A use case adds the Runtime:
+The platform deploys without any agent. A use case adds the Runtime. **The CDK path is the source of
+truth**: setting `agentcore.useCaseManifest` makes CDK compile the manifest into gateway targets +
+tool-scoped Cedar + the runtime model/prompt at deploy time. `render.py` is a standalone reference
+compiler (handy for inspecting the generated artifacts) — you do NOT need to run it for a CDK deploy.
 
 ```bash
-# 1. compile the manifest -> gateway targets + Cedar + guardrail + workflow prompt
+# (optional) inspect what the manifest compiles to — NOT required for the CDK deploy
 python use-cases/_harness/render.py use-cases/<name>/manifest.yaml build/<name>
 
-# 2. build + push the ARM64 agent image (Runtime is ARM64)
-AWS_PROFILE=<name> REPO=govai-<name> bash use-cases/_harness/build-image.sh
+# 1. build + push the ARM64 agent image by immutable digest (explicit profile + region; no env vars)
+./use-cases/_harness/build-image.sh --profile <name> --region <r> --repo govai-<name> --tag v1
 
-# 3. set agentcore.runtimeImageUri to the pushed image, then deploy — Runtime activates
+# 2. set agentcore.runtimeImageUri to the DIGEST, then deploy — Runtime activates
 npx cdk deploy GovAI-<customer>-<env>-AgentPlatform -c mode=standalone -c configFile=config/<customer>.json --profile <name>
 ```
 

@@ -8,6 +8,25 @@ detective Config rules, a governance dashboard, and an agent registry — across
 This runbook is the single source of truth for a deployment. The per-mode files in this folder
 (`standalone.md`, `hub.md`, `spoke.md`, `org.md`) are quick references; this document is the full plan.
 
+> **Read first — maturity & supported scope.** This is a governance **accelerator** in a hardening
+> phase (see `docs/REMEDIATION.md` and the README maturity matrix). **Supported for customer
+> deployment today: `standalone` (single-account pilot)** — after you complete §A–§E below and the
+> acceptance checklist (§15). `hub`/`spoke` cross-account integration is **partial** (OAM links +
+> evidence delivery not complete), `org` enforcement is **synth-tested only** (validate in a test OU
+> first), and **multi-agent A2A is IAM scaffolding, not working orchestration** — do not promise it.
+> If you only do one thing from this runbook, do the §12 standalone walkthrough end to end.
+
+## 0. Scope & responsibility (agree this with the customer before touching an account)
+
+| Area | Platform provides | Customer owns |
+|---|---|---|
+| Deployment | CDK app, four mode profiles, runbook | Target account(s)/Org, CDK bootstrap, running `cdk deploy` against a named profile |
+| Identity | Cognito pool + machine & human clients + groups (or trusts an external IdP) | Real users, group membership, IdP federation config, approver roster |
+| Runtime | ARM64 agent harness + image build script | Building/scanning/publishing the image to ECR; the model + system prompt via the manifest |
+| Governance | guardrail, Cedar enforce, kill switch, HITL, interceptor, logging | Approved guardrail content, forbidden tools, approver identities, incident ownership |
+| Evidence | CloudTrail + invocation logs + WORM bucket + HITL ledger | Retention policy, evidence export, legal hold, access review |
+| **Explicit exclusions (today)** | — | hub/spoke evidence pipeline, org live enforcement, A2A orchestration, private-VPC networking, prod cost model |
+
 ---
 
 ## 1. High-level flow
@@ -133,6 +152,16 @@ Collect these **before** writing the config. (★ = blocks deployment if unknown
 | 13 (org) | Org guardrail floor ARN? | `org.orgGuardrailArn` | Pins the `BEDROCK_POLICY` declarative floor. |
 | 14 | Use case(s) + consequential actions? | `agentcore.useCaseManifest` → `use-cases/<name>/manifest.yaml` | Tool targets + Cedar (permit by group, forbid consequential) auto-wired from the manifest. |
 | 15 | Detective compliance rules wanted? | `controls.detectiveConfigRules` | SRA-style AWS Config rules (guardrails present, invocation logging on). Needs a Config recorder. |
+| 16 ★ | **Existing Bedrock model-invocation logging** in this account/region? | `governance.invocationLoggingOwnership` | `create` (default) **refuses to overwrite** an existing config. Use `adopt` to keep theirs, `manage` to take over (restored on teardown). Check with `aws bedrock get-model-invocation-logging-configuration`. |
+| 17 ★ | Active SCPs / permission boundaries on the target account? | — | They can block CDK execution roles. Confirm the deployer principal is exempt; test a `cdk diff` first. |
+| 18 | Human approver roster + sign-in groups? | `identity.humanAuth.groups` | The group the use-case Cedar permits (e.g. `csr-agents`) must exist and have members — see §A. |
+| 19 | Bedrock model-access enabled + service quotas? | — | Enable model access in the Bedrock console; confirm AgentCore + inference-profile quotas in-region. |
+
+**Data boundary (confirm explicitly):** approved models + inference regions, data residency, whether
+full prompt/response payload logging is permitted (invocation logs capture content — redaction in a
+response does not sanitize the input log), evidence-key ownership, and whether private connectivity
+(VPC/PrivateLink) is required (the Runtime/Browser use PUBLIC network mode today — a supported-profile
+decision, not an assurance it fits every boundary).
 
 ---
 
@@ -233,12 +262,144 @@ reports **deny-by-default** — verified live.
 
 ---
 
+## A. Identity — provision a human who can drive the governed workflow
+
+The use-case Cedar policy permits a Cognito **group** (e.g. `csr-agents`); a human must sign in and
+present a JWT carrying `cognito:groups`. The platform provisions the group + a human app client when
+`identity.humanAuth.enabled` is set; **you create the users** (IaC must not bake in credentials):
+
+```bash
+POOL=$(aws ssm get-parameter --name /governed-ai/<customer>/<env>/agent-platform/user-pool-id \
+  --query Parameter.Value --output text --profile <p> --region <r>)
+HUMAN_CLIENT=$(aws ssm get-parameter --name /governed-ai/<customer>/<env>/agent-platform/human-client-id \
+  --query Parameter.Value --output text --profile <p> --region <r>)
+
+# Create an authorized CSR (in the csr-agents group) and an unauthorized viewer (in NO group).
+./scripts/create-human-user.sh --pool-id "$POOL" --username csr-alice  --group csr-agents --profile <p> --region <r>
+./scripts/create-human-user.sh --pool-id "$POOL" --username viewer-bob --group ""          --profile <p> --region <r>
+
+# Obtain a token (requires identity.humanAuth.enableUserPasswordAuth). Use the ID token (carries groups).
+aws cognito-idp initiate-auth --region <r> --profile <p> --auth-flow USER_PASSWORD_AUTH \
+  --client-id "$HUMAN_CLIENT" --auth-parameters USERNAME=csr-alice,PASSWORD='<pw>' \
+  --query 'AuthenticationResult.IdToken' --output text
+```
+Expired tokens, wrong-client tokens, and users with no group must be denied at the gateway (see §15).
+
+## B. Governance semantics — decide and record these with the customer
+
+- **Approved guardrail + version** (`baseline/guardrail-id`, `baseline/guardrail-version`): the runtime
+  pins it; ungoverned inference is denied. For strict account-wide "only this guardrail" enforcement,
+  design `aws bedrock put-enforced-guardrail-configuration` with the customer (account-wide blast radius).
+- **Enforcement**: Cedar is `ENFORCE` by default. `LOG_ONLY` is observe-only and is rejected unless
+  `agentcore.acknowledgeNonEnforcingCedar:true` — never ship a "governed" pilot in LOG_ONLY.
+- **Forbidden/consequential actions**: the manifest `workflow.consequential_action` is Cedar-forbidden
+  to the agent and routed through the HITL gate (§C).
+- **Kill switch** (§12): engage attaches a forbid-all Cedar policy; release deletes it and verifies it
+  is gone before reporting released. Scope = the gateway's tool calls (not in-flight model inference).
+
+## C. Human-in-the-loop — how an approved action actually executes
+
+1. The agent reaches the consequential step and calls `request_human_signoff` → starts the approval
+   state machine (`govai-<customer>-<env>-hitl`) and returns a pending approval id. It does **not**
+   perform the action (Cedar forbids it).
+2. An approver resolves the waiting task (bind their identity):
+   ```bash
+   aws lambda invoke --function-name <Hitl ApprovalFn> --region <r> --profile <p> \
+     --payload '{"taskToken":"<from SNS>","decision":"approve","approver":"supervisor-sam"}' out.json
+   ```
+3. The executor Lambda (a **separate** role — not the agent) performs the action **exactly once** and
+   writes actor/approver/decision/result to the approvals ledger
+   (`/governed-ai/<customer>/<env>/controls/hitl-approvals-table`). Re-approving the same digest does
+   not re-execute. Reject/timeout record `REJECTED` and no action runs.
+
+---
+
+## 12b. Standalone reference walkthrough (clean checkout → verified transactions)
+
+Do this end to end before telling a customer standalone is ready. Every step has an expected result.
+
+```bash
+# 1. Clean build + both test suites + nag (no AWS yet)
+npm ci && npm run build && npm test && npm run test:lambda
+npx cdk synth --quiet -c mode=standalone -c configFile=config/<customer>.json -c nag=true --profile <p>
+
+# 2. Bootstrap + deploy (review the diff first)
+npx cdk bootstrap aws://<account>/<r> --profile <p>
+npx cdk deploy --all -c mode=standalone -c configFile=config/<customer>.json --profile <p> --require-approval broadening
+
+# 3. Build + publish the ARM64 image by DIGEST, set runtimeImageUri, redeploy to activate the Runtime
+./use-cases/_harness/build-image.sh --profile <p> --region <r> --repo govai-<customer> --tag v1
+#   -> copy IMAGE_DIGEST_URI into config.agentcore.runtimeImageUri, then re-run the deploy above
+
+# 4. Provision humans (§A), then run the positive + negative transactions
+```
+**Expected results (the acceptance core):**
+- **Authorized human + allowed tool** → the tool executes; the ledger/trace shows `csr-alice` + case id.
+- **Unauthorized identity** (`viewer-bob`, no group) → gateway returns deny-by-default; zero tools listed.
+- **Consequential action** → the agent calls `request_human_signoff` and stops; nothing is filed until
+  a human approves; approval files it **exactly once**; a second approval of the same digest is a no-op.
+- **Kill switch engage** → subsequent tool calls are blocked at the gateway; **release** → access
+  restored and the forbid policy is confirmed deleted (SSM flag back to `normal`).
+- **Existing-logging safety** → with `invocationLoggingOwnership: adopt`/`create`, a pre-existing
+  invocation-logging config in the account survives deploy **and** teardown.
+
+---
+
+## 13. Operations
+
+- **Health**: Runtime endpoint `READY`; gateway reachable; `GetTraceSegmentDestination` → `ACTIVE`.
+- **Signals**: guardrail interventions + model invocations (dashboard), interceptor denials (Lambda
+  logs), HITL ledger entries, kill-switch SSM flag.
+- **On-call**: engage the kill switch (§12); inspect the approvals ledger; pull traces via Transaction
+  Search / X-Ray. Token expiry and gateway 4xx are the common "it stopped working" causes.
+- **Fail-closed**: ledger/interceptor errors deny the request; an undecodable token is rejected before
+  any tool runs.
+
+## 14. Lifecycle
+
+- **Upgrade**: `cdk diff` first; deploy by immutable image **digest** (never a moving tag); guardrail
+  edits create a new version — re-pin it. **Rollback** = redeploy the prior digest + prior config hash.
+- **Teardown**: see §10 — retained keys/buckets in prod (WORM retention cannot be bypassed in prod),
+  stop writers before emptying versioned dev buckets, and remember invocation-logging `manage` mode
+  restores the customer's prior config on destroy. Destroy is **not** a complete rollback of
+  account-level singletons (Transaction Search stays enabled by design).
+
+## 15. Acceptance evidence (capture for sign-off)
+
+Record: commit SHA, config hash, CDK + CLI versions, image **digest**, account/region, and for each
+row below the actual observed result + where it was observed.
+
+| Scenario | Required evidence |
+|---|---|
+| Allowed human + allowed tool | Tool executed; identity/case consistent in trace + ledger |
+| Missing/expired/wrong-client token | Rejected before any tool runs |
+| Wrong group / similar-name group | Exact authorization denial (not a model refusal) |
+| Forbidden consequential action | Denied regardless of prompt; only the HITL gate can execute it |
+| Unapproved model/profile | Denied at the inference boundary (runtime IAM scoped to `allowedModelIds`) |
+| Approve / reject / timeout / replay | Correct outcome; **at most one** authorized execution |
+| Kill-switch engage / release / invalid action | Blocks, restores, and release verifies the deny is gone |
+| Existing logging + deploy/destroy | Customer's original logging intact afterward |
+
+---
+
 ## 9. Cost
 
-Idle standing cost is small: ~**$1/month per KMS key** dominates; CloudTrail management events are free;
-Cognito/DynamoDB/gateway idle ≈ $0. Variable cost is Bedrock inference (per token) + guardrail
-evaluations + CloudWatch Logs + (org) a few cents of CloudFormation Guard/Hook activity. A full
-deploy→validate→teardown pilot cycle costs pennies.
+Price a real workload scenario with the customer — do not quote a flat "pennies" figure (no cost was
+independently benchmarked here). Build the estimate from these line items:
+
+| Line item | Driver |
+|---|---|
+| KMS CMKs | ~$1/key/month (several keys: evidence, log-archive, memory) + per-request |
+| CloudTrail | management events free; **AgentCore data events bill per event** |
+| Bedrock | inference per token (incl. the inference-profile model) + guardrail evaluations |
+| CloudWatch | invocation logs + span ingestion + Transaction Search indexing (at your `observabilityIndexingPercentage`) + dashboard |
+| Runtime / ECR | AgentCore Runtime compute when active + ECR image storage |
+| DynamoDB | interceptor ledger + HITL approvals (PAY_PER_REQUEST) |
+| State machine / Lambda | HITL executions + control Lambdas (low) |
+| Omni (if enabled) | per the CloudWatch Omni pricing page |
+
+An **existing** organization trail can change incremental logging cost. Idle standing cost is modest
+(KMS keys dominate); the variable cost is inference + log/trace volume, which depends on the use case.
 
 ---
 

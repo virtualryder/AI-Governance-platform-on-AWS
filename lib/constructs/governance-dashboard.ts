@@ -9,10 +9,10 @@ export interface GovernanceDashboardProps {
 /**
  * Governance dashboard (D4) for the hub — a CloudWatch dashboard summarizing the platform's
  * governance signals: Bedrock guardrail interventions, model invocations, and AgentCore gateway
- * activity. Uses `AWS::CloudWatch::Dashboard` (native, in aws-cdk-lib). The richer CloudWatch Omni
- * Space (`AWS::CloudWatch::Space` / `AWS::CloudWatch::OmniDashboard`) is a newer CFN type not yet in
- * the pinned aws-cdk-lib and is a per-customer upgrade on top of the Transaction Search data (D2);
- * this dashboard delivers the grounded, deployable governance view today.
+ * activity. Uses `AWS::CloudWatch::Dashboard` (native, in aws-cdk-lib). This is the always-on,
+ * zero-prerequisite governance view. The richer CloudWatch Omni Space (`AWS::CloudWatch::Space` /
+ * `AWS::CloudWatch::OmniDashboard`) is the per-customer upgrade — see `OmniObservability`
+ * (`lib/constructs/omni-observability.ts`), gated on an Omni domain existing (`agentcore.omni`).
  */
 export class GovernanceDashboard extends Construct {
   readonly dashboard: cloudwatch.CfnDashboard;

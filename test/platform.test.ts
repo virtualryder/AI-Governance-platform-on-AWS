@@ -202,6 +202,43 @@ test('governance hub: central log archive + OAM sink in hub mode; collapsed in s
   collapsed.resourceCountIs('AWS::Oam::Sink', 0); // baseline provides evidence; no cross-account sink
 });
 
+test('governance hub: CloudWatch Omni space (+ data-access role) upgrade when an Omni domain is configured', () => {
+  const c = JSON.parse(JSON.stringify(config)) as PlatformConfig;
+  c.agentcore.omni = { domainId: 'd-testomni01', enableContextGraph: true, enableModelInference: true };
+  const t = Template.fromStack(
+    new GovernanceHubStack(new App(), 'HUBO', { config: c, mode: 'hub', env: { region: c.region } }),
+  );
+  // Space points at the out-of-band domain and the data-access role created here.
+  t.hasResourceProperties('AWS::CloudWatch::Space', {
+    DomainId: 'd-testomni01',
+    DataAccessRoleArn: Match.anyValue(),
+    Name: Match.stringLikeRegexp('^[a-z0-9]+(-[a-z0-9]+)*$'),
+  });
+  // Space operator role trusts the Omni service principal with the full confused-deputy trust actions.
+  t.hasResourceProperties('AWS::IAM::Role', {
+    AssumeRolePolicyDocument: {
+      Statement: Match.arrayWith([
+        Match.objectLike({
+          Principal: { Service: 'cloudwatch.amazonaws.com' },
+          Action: Match.arrayWith(['sts:AssumeRole', 'sts:TagSession', 'sts:SetSourceIdentity', 'sts:SetContext']),
+          Condition: { StringEquals: { 'aws:SourceAccount': Match.anyValue() } },
+        }),
+      ]),
+    },
+  });
+  // No explicit Omni dashboard unless a body is supplied (we don't guess the body schema).
+  t.resourceCountIs('AWS::CloudWatch::OmniDashboard', 0);
+});
+
+test('governance hub: no Omni space without a configured domain', () => {
+  const c = JSON.parse(JSON.stringify(config)) as PlatformConfig;
+  delete c.agentcore.omni;
+  const t = Template.fromStack(
+    new GovernanceHubStack(new App(), 'HUBN', { config: c, mode: 'hub', env: { region: c.region } }),
+  );
+  t.resourceCountIs('AWS::CloudWatch::Space', 0);
+});
+
 test('org foundation: lifted SCPs + SCP-exempt deployer role', () => {
   const app = new App();
   const stack = new OrgFoundationStack(app, 'ORG', { config, mode: 'org', env: { region: config.region } });

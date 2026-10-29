@@ -32,7 +32,12 @@
     "enableMemory": true,
     "memoryEventExpiryDays": 30,
     "accessTokenValidityMinutes": 15,
-    "allowedModelIds": ["anthropic.claude-sonnet-4-5-20250929-v1:0"]
+    "allowedModelIds": ["anthropic.claude-sonnet-4-5-20250929-v1:0"],
+    "omni": {
+      "domainId": "d-exampleomni01",
+      "enableContextGraph": true,
+      "enableModelInference": true
+    }
   },
   "controls": {
     "monthlyBudgetUsd": 500,

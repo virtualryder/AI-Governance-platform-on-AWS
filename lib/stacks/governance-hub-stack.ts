@@ -6,6 +6,7 @@ import { OamSink } from '../constructs/oam-sink';
 import { PlatformCatalog } from '../constructs/service-catalog';
 import { AgentRegistry } from '../constructs/agent-registry';
 import { GovernanceDashboard } from '../constructs/governance-dashboard';
+import { OmniObservability } from '../constructs/omni-observability';
 import { applyHubNagSuppressions } from './governance-hub-nag-suppressions';
 
 /**
@@ -21,6 +22,7 @@ export class GovernanceHubStack extends PlatformStack {
   readonly oamSink?: OamSink;
   readonly catalog?: PlatformCatalog;
   readonly registry?: AgentRegistry;
+  readonly omni?: OmniObservability;
 
   constructor(scope: Construct, id: string, props: PlatformStackProps) {
     super(scope, id, props);
@@ -36,13 +38,21 @@ export class GovernanceHubStack extends PlatformStack {
       this.registry = new AgentRegistry(this, 'Registry', { config: this.config });
       new GovernanceDashboard(this, 'Dashboard', { config: this.config });
 
+      // CloudWatch Omni upgrade (per-customer): provisioned only once an Omni domain exists.
+      if (this.config.agentcore.omni?.domainId) {
+        this.omni = new OmniObservability(this, 'Omni', { config: this.config });
+      }
+
       this.publish('hub/log-archive-bucket', this.logArchive.bucket.bucketName, 'Central log archive bucket');
       this.publish('hub/oam-sink-arn', this.oamSink.sink.attrArn, 'OAM observability sink ARN');
       this.publish('hub/catalog-portfolio-id', this.catalog.portfolio.portfolioId, 'Service Catalog portfolio ID');
       this.publish('hub/agent-registry-arn', this.registry.registryArn, 'Agent Registry ARN');
+      if (this.omni) {
+        this.publish('hub/omni-space-id', this.omni.spaceId, 'CloudWatch Omni space id');
+      }
       applyHubNagSuppressions(this);
     }
 
-    this.publish('governance-hub/version', '0.2.0', 'GovernanceHub stack version');
+    this.publish('governance-hub/version', '0.3.0', 'GovernanceHub stack version');
   }
 }

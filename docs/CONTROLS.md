@@ -17,7 +17,8 @@ Legend — Modes: **S**=standalone · **P**=spoke · **H**=hub · **O**=org.
 - **Step 5 (cont.):** F3 (Service Catalog) done — hub portfolio + a "governed data workspace" product (CMK + BPA + TLS + versioned bucket) for self-service compliant provisioning.
 - **Step 5 (cont.):** D4 (governance dashboard, `AWS::CloudWatch::Dashboard`) + SRA detective Config rules (custom rules: invocation-logging-configured, guardrails-present; gated on `controls.detectiveConfigRules`, needs a Config recorder) done.
 - **Step 5 done (cont.):** F2 (Guard-hook StackSets rollout) — service-managed `AWS::CloudFormation::StackSet` with auto-deployment to the Agentic OU, embedding a per-account Guard hook that reads the hub's central rules (shared org-wide by `aws:PrincipalOrgID`); gated on `org.organizationId` + `org.agenticOuId`. H3 (multi-agent discovery) — `multiAgent` config drives runtime IAM (`InvokeAgentRuntime` on allow-listed collaborators, OBO token exchange, registry publish) + env wiring for the Strands harness.
-- **Step 5 remaining:** CloudWatch Omni Space upgrade (`AWS::CloudWatch::Space`, a newer CFN type than the pinned `aws-cdk-lib`) — per-customer upgrade on the Transaction Search data. StackSets + A2A are synth/nag/test-verified; live deploy requires an AWS Organization / multi-account.
+- **Step 5 done (cont.):** CloudWatch Omni Space upgrade (D4+) — `AWS::CloudWatch::Space` (+ optional `AWS::CloudWatch::OmniDashboard`) declared via the raw `CfnResource` escape hatch because both are newer than the pinned `aws-cdk-lib`; grounded against the CFN Template Reference. Hub-mode, gated on `agentcore.omni.domainId`; the construct creates the space operator / data-access role (trusts `cloudwatch.amazonaws.com` + the confused-deputy `sts:TagSession/SetSourceIdentity/SetContext` actions and `aws:SourceAccount`, carries `CloudWatchOmniSpaceAccessPolicy` as base + boundary).
+- **All step-5 items complete.** StackSets + A2A + Omni are synth/nag/test-verified (24 tests, cdk-nag clean ×4 modes); live deploy of StackSets needs an AWS Organization, and the Omni Space needs an out-of-band Omni domain (console + SSO onboarding).
 Controls not yet listed are design targets realized in later steps.
 
 ## A. Evidence & audit (per-account baseline)
@@ -56,7 +57,8 @@ Controls not yet listed are design targets realized in later steps.
 | D1 | Agent tracing | AgentCore Observability (OTel: sessions→traces→spans) | convention | S,P | Auto on Runtime; ADOT + env vars off-runtime |
 | D2 | Transaction Search | X-Ray `UpdateTraceSegmentDestination` → CloudWatchLogs | **Custom** | S,P | Idempotent custom resource (tolerates pre-existing account-level config; does not disable on teardown) — the CFN `TransactionSearchConfig` fails AlreadyExists |
 | D3 | Cross-account telemetry | OAM `Sink` (hub) + `Link` (spoke) | L1 | H,P | Sink policy scoped by `aws:PrincipalOrgID` |
-| D4 | Governance dashboard | `AWS::CloudWatch::Dashboard` (guardrail + invocation + gateway metrics) | L1 | H | CloudWatch Omni Space (`AWS::CloudWatch::Space`) is a newer CFN type not in the pinned cdk-lib — per-customer upgrade on the Transaction Search data |
+| D4 | Governance dashboard | `AWS::CloudWatch::Dashboard` (guardrail + invocation + gateway metrics) | L1 | H | Always-on, zero-prerequisite governance view |
+| D4+ | Unified/agent observability upgrade | CloudWatch Omni `AWS::CloudWatch::Space` (+ optional `OmniDashboard`), with the space operator / data-access role | L1 via raw `CfnResource` (newer than pinned cdk-lib) | H | ✅ `agentcore.omni.domainId` (domain created out-of-band at Omni onboarding); auto-discovers topology + golden metrics; `enableModelInference` adds eval-driven agent observability |
 
 ## E. Operational controls
 

@@ -39,8 +39,9 @@ npx cdk deploy --all -c mode=standalone -c configFile=config/<customer>.json --p
 - **Hub + Org**: organization SCPs (AI-inference perimeter + control-plane integrity), SCP-exempt
   deployer role, Bedrock org declarative policy (`BEDROCK_POLICY`), CloudFormation **Guard hooks**,
   **Budgets→SCP cost kill switch**, central WORM log archive, OAM cross-account sink, Service Catalog,
-  **Agent Registry** (+RAM), a **CloudWatch governance dashboard**, **SRA detective Config rules**, and
-  an **org-wide Guard-hook StackSet** (service-managed, auto-deploying to the Agentic OU).
+  **Agent Registry** (+RAM), a **CloudWatch governance dashboard**, **SRA detective Config rules**,
+  an **org-wide Guard-hook StackSet** (service-managed, auto-deploying to the Agentic OU), and an
+  opt-in **CloudWatch Omni Space** (`AWS::CloudWatch::Space`) upgrade for unified + agent observability.
 - **Multi-agent (A2A)**: config-driven agent-to-agent collaboration — the runtime role is granted
   `InvokeAgentRuntime` on allow-listed collaborator runtimes (plus OBO token exchange and Agent
   Registry publish), and the `multiAgent` config is handed to the Strands harness. Cedar still governs
@@ -68,7 +69,7 @@ Copy `config/platform.example.json` to `config/<customer>.json` for each custome
 > against an explicitly named target account/profile (`--profile <name>`).
 
 ## Status
-**All six build steps complete** (see `CLAUDE.md`). All four modes synth, **22 tests green, cdk-nag
+**All six build steps complete** (see `CLAUDE.md`). All four modes synth, **24 tests green, cdk-nag
 clean** across standalone/hub/spoke/org.
 
 **Live-validated on AWS** (standalone, torn down after): the full citizen-311 agent ran end-to-end —
@@ -76,8 +77,10 @@ Cognito JWT → AgentCore Runtime → MCP Gateway → per-user interceptor → C
 governed tools, ran the intake workflow, and **correctly refused the consequential `submit` action**
 (owned by the HITL sign-off gate). Deny-by-default was verified before any tools were attached.
 
-**Org-wide Guard-hook rollout** (service-managed StackSet auto-deploying to the Agentic OU) and
+**Org-wide Guard-hook rollout** (service-managed StackSet auto-deploying to the Agentic OU),
 **multi-agent A2A** invoke-authz + registry-discovery wiring (`multiAgent` config → runtime IAM for
-`InvokeAgentRuntime` / OBO token exchange / registry publish) are built and synth/nag/test-verified;
-live deploy requires an AWS Organization. Remaining backlog (tracked in `CLAUDE.md`): CloudWatch
-**Omni Space** upgrade (a newer CFN type than the pinned `aws-cdk-lib`).
+`InvokeAgentRuntime` / OBO token exchange / registry publish), and the **CloudWatch Omni Space**
+upgrade (`AWS::CloudWatch::Space` + optional `OmniDashboard`, via the raw `CfnResource` escape hatch
+since both are newer than the pinned `aws-cdk-lib`) are all built and synth/nag/test-verified. Live
+deploy of the StackSet needs an AWS Organization, and the Omni Space needs an Omni domain created
+during Omni onboarding. **No remaining backlog.**

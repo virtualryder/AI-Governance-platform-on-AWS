@@ -147,6 +147,32 @@ export interface PlatformConfig {
      * deny-by-default already governs an empty gateway. Opt in only once tool-scoped policies the
      * engine will accept exist (the use-case renders them). */
     attachBaselineCedarPolicies?: boolean;
+    /** CloudWatch Omni upgrade (hub mode) — the next-gen unified/agent observability experience that
+     * supersedes the classic governance dashboard. An Omni **domain** is created out-of-band during
+     * Omni onboarding (console + SSO; there is no CloudFormation domain resource), so this is gated on
+     * `domainId`. When set, the hub provisions an `AWS::CloudWatch::Space` (the space operator /
+     * data-access role is created here, trusting `cloudwatch.amazonaws.com`) that auto-discovers
+     * topology and surfaces golden metrics across the account/Region. */
+    omni?: {
+      /** Omni domain id (`d-...`) from onboarding. Required to create the Space. */
+      domainId: string;
+      /** Space name (`^[a-z0-9]+(-[a-z0-9]+)*$`, 3–64). Defaults to `govai-<customer>-<env>`. */
+      spaceName?: string;
+      /** Attach `CloudWatchOmniAWSIntegrationPolicy` so Omni can discover resources for the Context
+       * Graph. Defaults to true. */
+      enableContextGraph?: boolean;
+      /** Attach `CloudWatchOmniModelInferencePolicy` for eval-driven agent observability (model
+       * invocation in evaluations). Defaults to false. */
+      enableModelInference?: boolean;
+      /** Optional CMK ARN for Space encryption. The key must carry the `cw-omni` tag and allow the
+       * space role (customer-managed outside this stack). Omitted → Omni-managed encryption. */
+      kmsKeyArn?: string;
+      /** Optional role Omni assumes for AgentCore agent evaluation. */
+      agentCoreEvaluationRoleArn?: string;
+      /** Optional Omni dashboard body (`AWS::CloudWatch::OmniDashboard`). Omitted → rely on Omni's
+       * auto-discovered dashboards; the body schema is not synthesized here to avoid guessing it. */
+      dashboardBody?: string;
+    };
   };
   controls: {
     monthlyBudgetUsd: number;

@@ -193,13 +193,22 @@ aws ssm get-parameters-by-path --path /governed-ai/<customer>/<env> --recursive 
 - **hub:** central WORM log archive; OAM sink; Service Catalog portfolio + product; Agent Registry;
   the **CloudWatch governance dashboard** `governed-ai-<customer>-<env>` (guardrail interventions,
   model invocations, gateway activity).
-- **org:** SCPs attached to the OU; `BEDROCK_POLICY` present; Guard hook `ENABLED`; Budgets action
-  `APPLY_SCP_POLICY`.
+- **hub (Omni upgrade):** if `agentcore.omni.domainId` is set, a CloudWatch **Omni Space**
+  `govai-<customer>-<env>` in `ACTIVE`/`CREATED` status plus its space operator / data-access role.
+- **org:** SCPs attached to the OU; `BEDROCK_POLICY` present; Guard hook `ENABLED`; Guard-hook
+  **StackSet** `govai-<customer>-guard-hook` (service-managed, auto-deploy to the Agentic OU);
+  Budgets action `APPLY_SCP_POLICY`.
 
-> **Governance dashboard vs. Omni:** D4 ships as a native `AWS::CloudWatch::Dashboard`. The richer
-> CloudWatch **Omni Space** (`AWS::CloudWatch::Space` / `AWS::CloudWatch::OmniDashboard`) is a newer
-> CFN type not in the pinned `aws-cdk-lib`; stand it up per-customer on top of the Transaction Search
-> data (D2) when a full SQL-over-traces / evaluation workspace is wanted.
+> **Governance dashboard vs. Omni:** D4 ships as a native `AWS::CloudWatch::Dashboard` — always on,
+> no prerequisites. The richer CloudWatch **Omni Space** (`AWS::CloudWatch::Space`, declared via the
+> raw `CfnResource` escape hatch since it is newer than the pinned `aws-cdk-lib`) is an opt-in
+> per-customer upgrade: unified + agent observability with auto-discovered topology, golden metrics,
+> and (with `enableModelInference`) eval-driven agent observability. **Prerequisite:** an Omni
+> **domain** created out-of-band during Omni onboarding (CloudWatch console + SSO; there is no CFN
+> domain resource) — set its `d-…` id as `agentcore.omni.domainId`. The construct creates the space
+> operator / data-access role for you; a customer-managed key for Space encryption must carry the
+> `cw-omni` tag and allow that role. Supply `agentcore.omni.dashboardBody` only if you want an
+> explicit `AWS::CloudWatch::OmniDashboard` (otherwise Omni's auto-discovered dashboards apply).
 
 ---
 

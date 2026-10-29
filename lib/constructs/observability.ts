@@ -1,4 +1,5 @@
-import * as xray from 'aws-cdk-lib/aws-xray';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import { AwsCustomResource, AwsCustomResourcePolicy, PhysicalResourceId } from 'aws-cdk-lib/custom-resources';
 import { Construct } from 'constructs';
 import { PlatformConfig } from '../config/platform-config';
 
@@ -7,21 +8,42 @@ export interface ObservabilityProps {
 }
 
 /**
- * AgentCore Observability is convention-based: agents emit OpenTelemetry (ADOT) spans that land in
- * CloudWatch Logs, and CloudWatch Transaction Search indexes a share of them into X-Ray for the
- * GenAI trace map. There is no AgentCore-specific CFN resource for it; the one account/region knob
- * is `AWS::XRay::TransactionSearchConfig`. All spans are retained in CloudWatch Logs; only
- * `indexingPercentage` drives X-Ray indexing cost, so it defaults low (5%) and is config-tunable.
+ * AgentCore Observability relies on CloudWatch Transaction Search: agent OTel spans land in
+ * CloudWatch Logs, indexed into X-Ray for the GenAI trace map.
  *
- * Singleton per account/region — create it in exactly one stack (the AgentPlatform).
+ * Transaction Search is an account/region singleton. The CloudFormation resource
+ * (`AWS::XRay::TransactionSearchConfig`) FAILS with AlreadyExists when the account already has it on —
+ * which breaks any deploy into such an account. So this uses an idempotent `AwsCustomResource` that
+ * sets the trace-segment destination to CloudWatchLogs (a no-op if already set) and, deliberately,
+ * does NOT revert on delete — tearing this stack down must not disable an account-wide setting that
+ * other workloads may depend on.
  */
 export class Observability extends Construct {
-  readonly transactionSearch: xray.CfnTransactionSearchConfig;
-
   constructor(scope: Construct, id: string, props: ObservabilityProps) {
     super(scope, id);
-    this.transactionSearch = new xray.CfnTransactionSearchConfig(this, 'TransactionSearch', {
-      indexingPercentage: props.config.agentcore.observabilityIndexingPercentage ?? 5,
+    void props;
+
+    new AwsCustomResource(this, 'TransactionSearch', {
+      resourceType: 'Custom::XRayTransactionSearch',
+      installLatestAwsSdk: false,
+      onUpdate: {
+        service: 'xray',
+        action: 'UpdateTraceSegmentDestination',
+        parameters: { Destination: 'CloudWatchLogs' },
+        physicalResourceId: PhysicalResourceId.of('xray-transaction-search'),
+      },
+      // No onDelete: Transaction Search is account/region-wide; leave it enabled on teardown.
+      policy: AwsCustomResourcePolicy.fromStatements([
+        new iam.PolicyStatement({
+          actions: [
+            'xray:UpdateTraceSegmentDestination',
+            'xray:GetTraceSegmentDestination',
+            'xray:UpdateIndexingRule',
+            'xray:GetIndexingRules',
+          ],
+          resources: ['*'],
+        }),
+      ]),
     });
   }
 }

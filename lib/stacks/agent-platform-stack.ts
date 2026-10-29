@@ -106,6 +106,7 @@ export class AgentPlatformStack extends PlatformStack {
     applyAgentPlatformNagSuppressions(this, {
       hasInterceptor: !!this.interceptor,
       hasRuntime: !!this.runtime,
+      hasObservability: this.config.agentcore.enableObservability ?? true,
       useCaseTargets: this.useCase?.targetNames,
     });
   }

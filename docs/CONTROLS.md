@@ -52,7 +52,7 @@ Controls not yet listed are design targets realized in later steps.
 | # | Control | Service / resource | IaC | Modes | Notes |
 |---|---|---|---|---|---|
 | D1 | Agent tracing | AgentCore Observability (OTel: sessions→traces→spans) | convention | S,P | Auto on Runtime; ADOT + env vars off-runtime |
-| D2 | Transaction Search | `AWS::XRay::TransactionSearchConfig` | L1 | S,P | Index % of spans into CW Logs |
+| D2 | Transaction Search | X-Ray `UpdateTraceSegmentDestination` → CloudWatchLogs | **Custom** | S,P | Idempotent custom resource (tolerates pre-existing account-level config; does not disable on teardown) — the CFN `TransactionSearchConfig` fails AlreadyExists |
 | D3 | Cross-account telemetry | OAM `Sink` (hub) + `Link` (spoke) | L1 | H,P | Sink policy scoped by `aws:PrincipalOrgID` |
 | D4 | Governance dashboard | CloudWatch Omni Space | L1/Custom | H | GA 2026-09; agent-observability + evaluation workflow |
 

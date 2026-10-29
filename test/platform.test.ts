@@ -104,7 +104,7 @@ test('agent platform: MCP gateway with CUSTOM_JWT, Cedar engine, memory, browser
   t.resourceCountIs('AWS::BedrockAgentCore::Policy', 0);
   t.resourceCountIs('AWS::BedrockAgentCore::Memory', 1); // example enables memory
   t.resourceCountIs('AWS::BedrockAgentCore::BrowserCustom', 1);
-  t.resourceCountIs('AWS::XRay::TransactionSearchConfig', 1);
+  t.resourceCountIs('Custom::XRayTransactionSearch', 1); // idempotent Transaction Search enablement
   // TOTP-only MFA means no Cognito SMS role.
   const roles = t.findResources('AWS::IAM::Role');
   for (const r of Object.values(roles)) {

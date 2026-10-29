@@ -126,6 +126,13 @@ export interface PlatformConfig {
   governance: {
     logRetentionDays: number;
     invocationLogging: boolean;
+    /** Ownership of the account/Region-singleton Bedrock model-invocation logging config:
+     * - 'create' (default): set it ONLY if none exists; refuse to overwrite a pre-existing config
+     *   (fail with guidance) — safe for shared/established accounts.
+     * - 'adopt': do not set or delete; use whatever logging the account already has.
+     * - 'manage': take it over, stashing the prior config and restoring it on teardown.
+     * This prevents a pilot from silently redirecting or disabling another app's logging. */
+    invocationLoggingOwnership?: 'create' | 'adopt' | 'manage';
     cloudTrailDataEvents: boolean;
     guardrail: GuardrailConfig;
   };

@@ -166,6 +166,16 @@ test('controls: kill switch, monthly budget, and HITL approval', () => {
   });
 });
 
+test('controls: SRA detective Config rules when enabled', () => {
+  const t = controlsTemplate((c) => {
+    c.controls.detectiveConfigRules = true;
+  });
+  t.resourceCountIs('AWS::Config::ConfigRule', 2); // invocation-logging + guardrails-present
+  t.hasResourceProperties('AWS::Config::ConfigRule', {
+    Source: Match.objectLike({ Owner: 'CUSTOM_LAMBDA' }),
+  });
+});
+
 test('controls: HITL omitted when disabled', () => {
   const t = controlsTemplate((c) => {
     c.controls.humanInTheLoop = false;
@@ -184,6 +194,7 @@ test('governance hub: central log archive + OAM sink in hub mode; collapsed in s
   hub.resourceCountIs('AWS::ServiceCatalog::Portfolio', 1);
   hub.resourceCountIs('AWS::ServiceCatalog::CloudFormationProduct', 1);
   hub.resourceCountIs('Custom::AgentRegistry', 1); // governed discovery (no CFN type)
+  hub.resourceCountIs('AWS::CloudWatch::Dashboard', 1); // governance dashboard (D4)
 
   const collapsed = Template.fromStack(
     new GovernanceHubStack(new App(), 'HUBC', { config, mode: 'standalone', env: { region: config.region } }),

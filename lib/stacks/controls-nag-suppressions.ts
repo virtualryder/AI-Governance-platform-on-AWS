@@ -6,8 +6,19 @@ import { Stack } from 'aws-cdk-lib';
  * The kill-switch and HITL-approval functions are small control-plane Lambdas that touch only AWS
  * control-plane APIs and no customer data.
  */
-export function applyControlsNagSuppressions(stack: Stack, opts: { hasHitl: boolean }): void {
+export function applyControlsNagSuppressions(stack: Stack, opts: { hasHitl: boolean; hasDetective?: boolean }): void {
   const sid = stack.stackName;
+
+  if (opts.hasDetective) {
+    NagSuppressions.addResourceSuppressionsByPath(stack, `${sid}/Detective/Fn/ServiceRole/DefaultPolicy/Resource`, [
+      {
+        id: 'AwsSolutions-IAM5',
+        reason:
+          'The detective Config-rule Lambda needs account-wide reads (bedrock:GetModelInvocationLoggingConfiguration, ' +
+          'bedrock:ListGuardrails) and config:PutEvaluations, none of which support resource-level scoping.',
+      },
+    ]);
+  }
 
   NagSuppressions.addStackSuppressions(stack, [
     {

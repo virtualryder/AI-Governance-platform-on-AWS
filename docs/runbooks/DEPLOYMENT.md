@@ -2,7 +2,8 @@
 
 **Audience:** AWS Solutions Architects deploying with a customer, and customer platform teams.
 **What it deploys:** a config-driven governance platform for Amazon Bedrock AgentCore — guardrails,
-audit, Cedar authorization, kill switches, budgets, and per-user governance — across four modes.
+audit, Cedar authorization, kill switches (incl. cost), budgets, per-user governance, Guard hooks,
+detective Config rules, a governance dashboard, and an agent registry — across four modes.
 
 This runbook is the single source of truth for a deployment. The per-mode files in this folder
 (`standalone.md`, `hub.md`, `spoke.md`, `org.md`) are quick references; this document is the full plan.
@@ -46,7 +47,7 @@ flowchart TD
 |---|---|---|---|
 | `standalone` | one account (pilot) | Baseline + AgentPlatform + Controls (+ collapsed Hub) | ✅ deployed + validated |
 | `spoke` | each workload account | Baseline + AgentPlatform + Controls | synth/nag (same stacks as standalone) |
-| `hub` | dedicated governance account | GovernanceHub (log archive, OAM sink, Service Catalog) | synth/nag |
+| `hub` | dedicated governance account | GovernanceHub (log archive, OAM sink, Service Catalog, Agent Registry, governance dashboard) | synth/nag |
 | `org` | management / delegated-admin | OrgFoundation (SCPs, Bedrock policy, Guard hooks, Budgets→SCP) | synth/nag — needs an Organization |
 
 ---
@@ -102,7 +103,7 @@ sequenceDiagram
 ```mermaid
 flowchart TB
   MGMT[Management / delegated-admin<br/>**org**: SCPs, Bedrock policy,<br/>Guard hooks, Budgets→SCP] -. StackSets .-> OU[Agentic OU]
-  HUB[Governance hub<br/>**hub**: log archive, OAM sink,<br/>Service Catalog] 
+  HUB[Governance hub<br/>**hub**: log archive, OAM sink, Service Catalog,<br/>Agent Registry, governance dashboard] 
   OU --> SP1[Spoke account A<br/>**spoke**]
   OU --> SP2[Spoke account B<br/>**spoke**]
   SP1 -. OAM Link .-> HUB
@@ -130,7 +131,8 @@ Collect these **before** writing the config. (★ = blocks deployment if unknown
 | 11 (org) ★ | Organization ID + Agentic OU ID? | `org.organizationId`, `org.agenticOuId` | SCP/Guard-hook/Budgets-action attachment targets. |
 | 12 (org) | SCP-exempt deployer role name? | `org.deployerRoleName` | The break-glass role every SCP exempts. Default `govai-<customer>-platform-deployer`. |
 | 13 (org) | Org guardrail floor ARN? | `org.orgGuardrailArn` | Pins the `BEDROCK_POLICY` declarative floor. |
-| 14 | Use case(s) + consequential actions? | `use-cases/<name>/manifest.yaml` | Tools, workflow, Cedar by group, HITL action. |
+| 14 | Use case(s) + consequential actions? | `agentcore.useCaseManifest` → `use-cases/<name>/manifest.yaml` | Tool targets + Cedar (permit by group, forbid consequential) auto-wired from the manifest. |
+| 15 | Detective compliance rules wanted? | `controls.detectiveConfigRules` | SRA-style AWS Config rules (guardrails present, invocation logging on). Needs a Config recorder. |
 
 ---
 
@@ -186,9 +188,18 @@ aws ssm get-parameters-by-path --path /governed-ai/<customer>/<env> --recursive 
   has Object Lock.
 - **AgentPlatform:** gateway `READY` (CUSTOM_JWT / MCP); PolicyEngine bound; Cognito pool live; (if
   enabled) interceptor attached at REQUEST with `passRequestHeaders`.
-- **Controls:** kill-switch SSM flag `normal`; HITL state machine; budget + alerts.
+- **Controls:** kill-switch SSM flag `normal`; HITL state machine; budget + alerts; (if
+  `detectiveConfigRules`) two AWS Config rules `govai-detect-*` reporting COMPLIANT.
+- **hub:** central WORM log archive; OAM sink; Service Catalog portfolio + product; Agent Registry;
+  the **CloudWatch governance dashboard** `governed-ai-<customer>-<env>` (guardrail interventions,
+  model invocations, gateway activity).
 - **org:** SCPs attached to the OU; `BEDROCK_POLICY` present; Guard hook `ENABLED`; Budgets action
   `APPLY_SCP_POLICY`.
+
+> **Governance dashboard vs. Omni:** D4 ships as a native `AWS::CloudWatch::Dashboard`. The richer
+> CloudWatch **Omni Space** (`AWS::CloudWatch::Space` / `AWS::CloudWatch::OmniDashboard`) is a newer
+> CFN type not in the pinned `aws-cdk-lib`; stand it up per-customer on top of the Transaction Search
+> data (D2) when a full SQL-over-traces / evaluation workspace is wanted.
 
 ---
 

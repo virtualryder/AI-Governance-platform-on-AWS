@@ -5,6 +5,7 @@ import { EvidenceBucket } from '../constructs/evidence-bucket';
 import { OamSink } from '../constructs/oam-sink';
 import { PlatformCatalog } from '../constructs/service-catalog';
 import { AgentRegistry } from '../constructs/agent-registry';
+import { GovernanceDashboard } from '../constructs/governance-dashboard';
 import { applyHubNagSuppressions } from './governance-hub-nag-suppressions';
 
 /**
@@ -33,6 +34,7 @@ export class GovernanceHubStack extends PlatformStack {
       this.oamSink = new OamSink(this, 'Oam', { config: this.config });
       this.catalog = new PlatformCatalog(this, 'Catalog', { config: this.config });
       this.registry = new AgentRegistry(this, 'Registry', { config: this.config });
+      new GovernanceDashboard(this, 'Dashboard', { config: this.config });
 
       this.publish('hub/log-archive-bucket', this.logArchive.bucket.bucketName, 'Central log archive bucket');
       this.publish('hub/oam-sink-arn', this.oamSink.sink.attrArn, 'OAM observability sink ARN');

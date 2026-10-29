@@ -5,6 +5,7 @@ import { PlatformStack, PlatformStackProps } from './platform-stack';
 import { KillSwitch } from '../constructs/kill-switch';
 import { PlatformBudget } from '../constructs/budgets';
 import { HumanInTheLoop } from '../constructs/hitl';
+import { DetectiveRules } from '../constructs/detective-rules';
 import { applyControlsNagSuppressions } from './controls-nag-suppressions';
 
 /**
@@ -17,6 +18,7 @@ export class ControlsStack extends PlatformStack {
   readonly killSwitch: KillSwitch;
   readonly budget: PlatformBudget;
   readonly hitl?: HumanInTheLoop;
+  readonly detective?: DetectiveRules;
 
   constructor(scope: Construct, id: string, props: PlatformStackProps) {
     super(scope, id, props);
@@ -35,6 +37,10 @@ export class ControlsStack extends PlatformStack {
       this.hitl = new HumanInTheLoop(this, 'Hitl', { config: this.config, encryptionKey });
     }
 
+    if (this.config.controls.detectiveConfigRules) {
+      this.detective = new DetectiveRules(this, 'Detective', { config: this.config });
+    }
+
     this.publish('controls/kill-switch-fn-arn', this.killSwitch.fn.functionArn, 'Kill switch Lambda ARN');
     if (this.hitl) {
       this.publish('controls/hitl-state-machine-arn', this.hitl.stateMachine.stateMachineArn, 'HITL state machine ARN');
@@ -42,6 +48,6 @@ export class ControlsStack extends PlatformStack {
     }
     this.publish('controls/version', '0.1.0', 'Controls stack version');
 
-    applyControlsNagSuppressions(this, { hasHitl: !!this.hitl });
+    applyControlsNagSuppressions(this, { hasHitl: !!this.hitl, hasDetective: !!this.detective });
   }
 }

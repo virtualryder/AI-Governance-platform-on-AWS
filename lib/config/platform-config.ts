@@ -150,6 +150,9 @@ export interface PlatformConfig {
     budgetAlertEmails: string[];
     killSwitch: boolean;
     humanInTheLoop: boolean;
+    /** Deploy SRA-style detective AWS Config rules (guardrails present, invocation logging on).
+     * Requires an AWS Config recorder in the account (Control Tower / landing zone). Defaults to false. */
+    detectiveConfigRules?: boolean;
     gatewayRequestsPerMinute: number;
     /** Per-user Gateway interceptor governance (allowlists, budgets, rate limits, auto-downgrade). */
     perUserGovernance?: PerUserGovernanceConfig;

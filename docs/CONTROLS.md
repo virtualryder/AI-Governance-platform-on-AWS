@@ -15,7 +15,8 @@ Legend — Modes: **S**=standalone · **P**=spoke · **H**=hub · **O**=org.
 - **Step 5 (cont.):** F1 (Guard Hook) done — `AWS::CloudFormation::GuardHook` in WARN over RESOURCE+STACK ops, evaluating `policies/guard/baseline.guard` (S3 BPA+encryption, guardrail CMK, gateway CUSTOM_JWT); org-wide rollout via StackSets (F2) is the documented distribution.
 - **Step 5 (cont.):** E3 (cost kill switch) done — a detached cost-freeze SCP (deny all Bedrock inference, deployer-exempt) auto-attached to the Agentic OU by an `AWS::Budgets::BudgetsAction` (`APPLY_SCP_POLICY`) at 100% of the monthly budget.
 - **Step 5 (cont.):** F3 (Service Catalog) done — hub portfolio + a "governed data workspace" product (CMK + BPA + TLS + versioned bucket) for self-service compliant provisioning.
-- **Step 5 remaining (hub/org, untestable without an Organization):** D4 (CloudWatch Omni), F2 (Guard-hook StackSets rollout), F4 (Registry + RAM) **built** (custom resource — unvalidated live). Remaining: H3, SRA detective rules.
+- **Step 5 (cont.):** D4 (governance dashboard, `AWS::CloudWatch::Dashboard`) + SRA detective Config rules (custom rules: invocation-logging-configured, guardrails-present; gated on `controls.detectiveConfigRules`, needs a Config recorder) done.
+- **Step 5 remaining:** F2 (Guard-hook StackSets rollout), H3 (multi-agent discovery), CloudWatch Omni Space upgrade (newer CFN type) — all untestable without an Organization/multi-account.
 Controls not yet listed are design targets realized in later steps.
 
 ## A. Evidence & audit (per-account baseline)
@@ -54,7 +55,7 @@ Controls not yet listed are design targets realized in later steps.
 | D1 | Agent tracing | AgentCore Observability (OTel: sessions→traces→spans) | convention | S,P | Auto on Runtime; ADOT + env vars off-runtime |
 | D2 | Transaction Search | X-Ray `UpdateTraceSegmentDestination` → CloudWatchLogs | **Custom** | S,P | Idempotent custom resource (tolerates pre-existing account-level config; does not disable on teardown) — the CFN `TransactionSearchConfig` fails AlreadyExists |
 | D3 | Cross-account telemetry | OAM `Sink` (hub) + `Link` (spoke) | L1 | H,P | Sink policy scoped by `aws:PrincipalOrgID` |
-| D4 | Governance dashboard | CloudWatch Omni Space | L1/Custom | H | GA 2026-09; agent-observability + evaluation workflow |
+| D4 | Governance dashboard | `AWS::CloudWatch::Dashboard` (guardrail + invocation + gateway metrics) | L1 | H | CloudWatch Omni Space (`AWS::CloudWatch::Space`) is a newer CFN type not in the pinned cdk-lib — per-customer upgrade on the Transaction Search data |
 
 ## E. Operational controls
 
@@ -98,8 +99,7 @@ Controls not yet listed are design targets realized in later steps.
 | H7 | Cross-graph trace continuity | OTEL session→trace→spans + correlation-ID propagation on A2A hops | convention | S,P | Mandate correlation-ID passthrough so a case is one auditable chain |
 
 ## Detective compliance layer (SRA GenAI harvest)
-Port selected AWS Config rules from SRA `bedrock_org` as CDK custom rules (Hub/Org detective layer):
-`check_guardrails`, `check_invocation_log_cloudwatch`/`_s3`, `check_vpc_endpoints`, `check_guardrail_encryption`.
+Implemented as CDK custom AWS Config rules (`controls.detectiveConfigRules`, Controls stack): `guardrails-present` and `invocation-logging-configured`. Additional SRA checks (`_s3`, `check_vpc_endpoints`, `check_guardrail_encryption`) extend the same check Lambda.
 These detect drift beneath the preventative SCP/Cedar/guardrail controls above.
 
 ## Baseline Cedar policies (templates, rendered per gateway ARN)

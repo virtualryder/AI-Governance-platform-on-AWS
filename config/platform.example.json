@@ -5,6 +5,11 @@
   "dataClassification": "confidential",
   "costCenter": "ai-platform",
   "hub": { "accountId": "111111111111" },
+  "org": {
+    "managementAccountId": "222222222222",
+    "organizationId": "o-exampleorg1",
+    "agenticOuId": "ou-exam-pleou123"
+  },
   "governance": {
     "logRetentionDays": 365,
     "invocationLogging": true,

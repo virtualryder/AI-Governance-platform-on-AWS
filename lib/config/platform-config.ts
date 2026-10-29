@@ -86,6 +86,9 @@ export interface PlatformConfig {
     controlTower?: ControlTowerMode;
     managementAccountId?: string;
     agenticOuId?: string;
+    /** Organization ID (o-xxxx). Required to roll the baseline Guard hook org-wide via StackSets
+     * (scopes cross-account read of the central Guard rules by `aws:PrincipalOrgID`). */
+    organizationId?: string;
     /** SCP-exempt deployer role name (the kingpin the lifted SCPs reference). Default derived from customerName. */
     deployerRoleName?: string;
     /** Name prefix for governed agent roles the inference-perimeter SCP allows. Default `govai-<customer>-governed`. */

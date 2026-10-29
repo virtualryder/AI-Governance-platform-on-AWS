@@ -80,6 +80,50 @@ export class AgentRuntime extends Construct {
       }),
     );
 
+    // Multi-agent A2A collaboration: inter-agent invoke authz for allow-listed remote collaborators,
+    // OBO token exchange, registry publish, and config passed to the Strands harness (which builds the
+    // in-process Swarm/Graph and wraps each remote collaborator as an A2AAgent from MULTI_AGENT).
+    // Cedar governs the invoked agent's TOOLS at its gateway — not the A2A invoke itself.
+    const ma = config.agentcore.multiAgent;
+    const maEnv: Record<string, string> = {};
+    if (ma?.enabled) {
+      maEnv.MULTI_AGENT = JSON.stringify(ma);
+      maEnv.PROTOCOL = config.agentcore.protocol ?? 'HTTP';
+      if (ma.sharedMemoryNamespace) maEnv.SHARED_MEMORY_NAMESPACE = ma.sharedMemoryNamespace;
+
+      const invokeArns = (ma.remoteCollaborators ?? [])
+        .map((c) => c.runtimeArn)
+        .filter((a): a is string => !!a);
+      if (invokeArns.length) {
+        this.role.addToPolicy(
+          new iam.PolicyStatement({
+            sid: 'A2AInvoke',
+            actions: ['bedrock-agentcore:InvokeAgentRuntime'],
+            resources: invokeArns.flatMap((a) => [a, `${a}/runtime-endpoint/*`]),
+          }),
+        );
+      }
+      if ((ma.remoteCollaborators ?? []).some((c) => c.auth === 'obo')) {
+        this.role.addToPolicy(
+          new iam.PolicyStatement({
+            sid: 'A2AOboTokenExchange',
+            actions: ['bedrock-agentcore:GetWorkloadAccessToken', 'bedrock-agentcore:GetResourceOauth2Token'],
+            resources: ['*'],
+          }),
+        );
+      }
+      if (ma.publishToRegistry) {
+        this.role.addToPolicy(
+          new iam.PolicyStatement({
+            sid: 'A2ARegistryPublish',
+            actions: ['bedrock-agentcore:CreateRegistryRecord', 'bedrock-agentcore:UpdateRegistryRecord'],
+            resources: ['*'],
+          }),
+        );
+      }
+    }
+    const envVars = { ...(environment ?? {}), ...maEnv };
+
     const allowedClients = identity.allowedClients.length ? identity.allowedClients : undefined;
     this.runtime = new bac.CfnRuntime(this, 'Runtime', {
       agentRuntimeName: name,
@@ -88,7 +132,7 @@ export class AgentRuntime extends Construct {
       agentRuntimeArtifact: { containerConfiguration: { containerUri: imageUri } },
       networkConfiguration: { networkMode: 'PUBLIC' },
       protocolConfiguration: config.agentcore.protocol ?? 'HTTP',
-      environmentVariables: environment,
+      environmentVariables: Object.keys(envVars).length ? envVars : undefined,
       authorizerConfiguration: {
         customJwtAuthorizer: { discoveryUrl: identity.discoveryUrl, allowedClients },
       },

@@ -250,6 +250,70 @@ test('org foundation: proactive Guard Hook (WARN) over resource + stack ops', ()
   });
 });
 
+test('org foundation: Guard hook rolls org-wide via service-managed auto-deploy StackSet to the Agentic OU', () => {
+  const c = JSON.parse(JSON.stringify(config)) as PlatformConfig;
+  c.org = { organizationId: 'o-abcd1234ef', agenticOuId: 'ou-abcd-12345678' };
+  const t = Template.fromStack(
+    new OrgFoundationStack(new App(), 'ORGSS', { config: c, mode: 'org', env: { region: c.region } }),
+  );
+  // Service-managed StackSet, auto-deploying to the Agentic OU, carrying an embedded Guard hook.
+  t.hasResourceProperties('AWS::CloudFormation::StackSet', {
+    PermissionModel: 'SERVICE_MANAGED',
+    AutoDeployment: { Enabled: true, RetainStacksOnAccountRemoval: false },
+    StackInstancesGroup: Match.arrayWith([
+      Match.objectLike({ DeploymentTargets: { OrganizationalUnitIds: ['ou-abcd-12345678'] } }),
+    ]),
+    TemplateBody: Match.anyValue(),
+  });
+  // Central rules bucket is readable by the org so each spoke account's hook can fetch the rules.
+  t.hasResourceProperties('AWS::S3::BucketPolicy', {
+    PolicyDocument: {
+      Statement: Match.arrayWith([
+        Match.objectLike({
+          Sid: 'OrgReadGuardRules',
+          Condition: { StringEquals: { 'aws:PrincipalOrgID': 'o-abcd1234ef' } },
+        }),
+      ]),
+    },
+  });
+});
+
+test('org foundation: no Guard hook StackSet without both org id and OU', () => {
+  const c = JSON.parse(JSON.stringify(config)) as PlatformConfig;
+  c.org = { agenticOuId: 'ou-abcd-12345678' }; // org id missing
+  const t = Template.fromStack(
+    new OrgFoundationStack(new App(), 'ORGNOSS', { config: c, mode: 'org', env: { region: c.region } }),
+  );
+  t.resourceCountIs('AWS::CloudFormation::StackSet', 0);
+});
+
+test('multi-agent A2A: invoke-authz for collaborators + config env on the runtime', () => {
+  const t = agentPlatformTemplate((c) => {
+    c.agentcore.runtimeImageUri = '111111111111.dkr.ecr.us-east-1.amazonaws.com/agent:latest';
+    c.agentcore.protocol = 'A2A';
+    c.agentcore.multiAgent = {
+      enabled: true,
+      orchestration: 'supervisor',
+      publishToRegistry: true,
+      remoteCollaborators: [
+        { name: 'benefits', runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:111111111111:runtime/benefits-x', auth: 'obo' },
+      ],
+    };
+  });
+  // Runtime env carries the multi-agent config for the harness.
+  t.hasResourceProperties('AWS::BedrockAgentCore::Runtime', {
+    EnvironmentVariables: Match.objectLike({ PROTOCOL: 'A2A', MULTI_AGENT: Match.anyValue() }),
+  });
+  // Runtime role can invoke the allow-listed collaborator runtime.
+  t.hasResourceProperties('AWS::IAM::Policy', {
+    PolicyDocument: {
+      Statement: Match.arrayWith([
+        Match.objectLike({ Sid: 'A2AInvoke', Action: 'bedrock-agentcore:InvokeAgentRuntime' }),
+      ]),
+    },
+  });
+});
+
 test('use case: tool targets + tool-scoped Cedar wired from the manifest', () => {
   const t = agentPlatformTemplate((c) => {
     c.agentcore.useCaseManifest = 'use-cases/citizen-311/manifest.yaml';

@@ -16,7 +16,8 @@ Legend — Modes: **S**=standalone · **P**=spoke · **H**=hub · **O**=org.
 - **Step 5 (cont.):** E3 (cost kill switch) done — a detached cost-freeze SCP (deny all Bedrock inference, deployer-exempt) auto-attached to the Agentic OU by an `AWS::Budgets::BudgetsAction` (`APPLY_SCP_POLICY`) at 100% of the monthly budget.
 - **Step 5 (cont.):** F3 (Service Catalog) done — hub portfolio + a "governed data workspace" product (CMK + BPA + TLS + versioned bucket) for self-service compliant provisioning.
 - **Step 5 (cont.):** D4 (governance dashboard, `AWS::CloudWatch::Dashboard`) + SRA detective Config rules (custom rules: invocation-logging-configured, guardrails-present; gated on `controls.detectiveConfigRules`, needs a Config recorder) done.
-- **Step 5 remaining:** F2 (Guard-hook StackSets rollout), H3 (multi-agent discovery), CloudWatch Omni Space upgrade (newer CFN type) — all untestable without an Organization/multi-account.
+- **Step 5 done (cont.):** F2 (Guard-hook StackSets rollout) — service-managed `AWS::CloudFormation::StackSet` with auto-deployment to the Agentic OU, embedding a per-account Guard hook that reads the hub's central rules (shared org-wide by `aws:PrincipalOrgID`); gated on `org.organizationId` + `org.agenticOuId`. H3 (multi-agent discovery) — `multiAgent` config drives runtime IAM (`InvokeAgentRuntime` on allow-listed collaborators, OBO token exchange, registry publish) + env wiring for the Strands harness.
+- **Step 5 remaining:** CloudWatch Omni Space upgrade (`AWS::CloudWatch::Space`, a newer CFN type than the pinned `aws-cdk-lib`) — per-customer upgrade on the Transaction Search data. StackSets + A2A are synth/nag/test-verified; live deploy requires an AWS Organization / multi-account.
 Controls not yet listed are design targets realized in later steps.
 
 ## A. Evidence & audit (per-account baseline)
@@ -74,7 +75,7 @@ Controls not yet listed are design targets realized in later steps.
 | # | Control | Service / resource | IaC | Modes | Notes |
 |---|---|---|---|---|---|
 | F1 | Proactive deploy-time policy | CloudFormation Guard Hook (`AWS::CloudFormation::GuardHook`) | L1 | P,O | `FailureMode: FAIL` blocks non-compliant resources |
-| F2 | Org-wide hook rollout | Service-managed StackSets (CT) / self-managed (no CT) | StackSets | O | Auto-deploy so new accounts inherit |
+| F2 | Org-wide hook rollout | Service-managed `AWS::CloudFormation::StackSet`, auto-deploy to Agentic OU; embedded hook reads hub rules via `aws:PrincipalOrgID` | L1 | O | ✅ Auto-deploys so new accounts inherit; WARN→FAIL once tuned |
 | F3 | Self-service catalog | Service Catalog portfolio + products | L2 | H | Shared org-wide / OU / account from hub |
 | F4 | Agent/tool catalog | AWS Agent Registry + RAM share | **Custom** | H | No CFN type |
 
@@ -90,9 +91,9 @@ Controls not yet listed are design targets realized in later steps.
 
 | # | Control | Service / resource | IaC | Modes | Notes |
 |---|---|---|---|---|---|
-| H1 | Agent-to-agent invoke authz | IAM `bedrock-agentcore:InvokeAgentRuntime` + OAuth audience / OBO token exchange | L1/L2 | S,P | **Cedar does NOT gate A2A invoke** — only the invoked agent's tools. `inter_agent.invoke_allowlist` → IAM role |
+| H1 | Agent-to-agent invoke authz | IAM `bedrock-agentcore:InvokeAgentRuntime` + OAuth audience / OBO token exchange | L1 | S,P | ✅ **Cedar does NOT gate A2A invoke** — only the invoked agent's tools. `multiAgent.remoteCollaborators[].runtimeArn` → allow-listed on the runtime role (+ OBO perms when `auth:'obo'`) |
 | H2 | Invoked-agent tool authz | Cedar at the collaborator's Gateway | L1 | S,P | Standard per-gateway Cedar applies once B is invoked |
-| H3 | Governed discovery | Agent Registry publish (draft→pending→discoverable) | Custom | H | `multiAgent.publishToRegistry` |
+| H3 | Governed discovery | Agent Registry publish (draft→pending→discoverable) | Custom | H | ✅ `multiAgent.publishToRegistry` → runtime IAM `Create/UpdateRegistryRecord` |
 | H4 | Shared context | AgentCore Memory shared namespace | L1 | S,P | `multiAgent.sharedMemoryNamespace`; actor-scoped cross-agent |
 | H5 | Cross-graph kill switch | Cedar forbid-all (tools) + Runtime endpoint disable + SCP on `InvokeAgentRuntime` | L1/SCP | S,P,O | **Must fan out to every agent** in the call graph |
 | H6 | Cross-graph cost attribution | Per-agent tags / inference-profile + correlation-ID reconstruction | convention | S,P | No native call-graph budget; `budgets.attribution_tag` + `correlation_id_passthrough` |

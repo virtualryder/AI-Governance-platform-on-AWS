@@ -51,6 +51,9 @@ export class GatewayInterceptor extends Construct {
         LEDGER_TABLE: this.ledger.tableName,
         RATE_PER_MINUTE: String(pug.ratePerMinute ?? config.controls.gatewayRequestsPerMinute ?? 0),
         ALLOWED_MODELS_BY_GROUP: JSON.stringify(pug.allowedModelsByGroup ?? {}),
+        // Model gating is opt-in: only active when a model-routing tool carries this exact key.
+        MODEL_PARAM_NAME: pug.modelParamName ?? '',
+        MODEL_ALLOWLIST_DEFAULT: pug.modelAllowlistDefault ?? 'deny',
       },
     });
     this.ledger.grantReadWriteData(this.fn);

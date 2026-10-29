@@ -25,6 +25,35 @@ ddb = boto3.client("dynamodb")
 TABLE = os.environ["LEDGER_TABLE"]
 RATE_PER_MINUTE = int(os.environ.get("RATE_PER_MINUTE", "0"))  # 0 = disabled
 ALLOWED_BY_GROUP = json.loads(os.environ.get("ALLOWED_MODELS_BY_GROUP", "{}"))
+# Model gating is OPT-IN: it runs only when a model-routing tool exposes the model id under this exact
+# key. Empty => disabled (ordinary tools are never model-gated; runtime IAM remains the hard bound).
+MODEL_PARAM = os.environ.get("MODEL_PARAM_NAME", "")
+MODEL_DEFAULT = os.environ.get("MODEL_ALLOWLIST_DEFAULT", "deny")  # for groups with no allowlist entry
+
+
+def _extract_model(params):
+    """Exact-key lookup of the model id (top level of params and under params.arguments).
+
+    MCP `tools/call` params are {"name": "<tool>", "arguments": {...}}, so a model-routing tool carries
+    the model id under arguments. No substring scan of serialized params (that was the F09 defect)."""
+    if not MODEL_PARAM or not isinstance(params, dict):
+        return None
+    if MODEL_PARAM in params:
+        return params[MODEL_PARAM]
+    args = params.get("arguments")
+    if isinstance(args, dict) and MODEL_PARAM in args:
+        return args[MODEL_PARAM]
+    return None
+
+
+def _model_allowed(requested, allowed):
+    """Boundary-anchored prefix match on the actual model id (not arbitrary params)."""
+    for entry in allowed:
+        if requested == entry or (
+            requested.startswith(entry) and requested[len(entry):][:1] in ("-", ".", ":", "/")
+        ):
+            return True
+    return False
 
 
 def _claims(headers):
@@ -74,14 +103,20 @@ def handler(event, _context):
     if blocked:
         return _deny(req_id, "User is blocked by governance policy.")
 
-    # 2. Model allowlist by Cognito group — only on actual tool calls (let initialize/tools/list pass).
-    if ALLOWED_BY_GROUP and body.get("method") == "tools/call":
-        allowed = {m for g in groups for m in ALLOWED_BY_GROUP.get(g, [])}
-        requested = json.dumps(body.get("params", {}))
-        if allowed and not any(fam in requested for fam in allowed):
-            # Only enforce when the group has an explicit allowlist and none matched.
-            if any(g in ALLOWED_BY_GROUP for g in groups):
-                return _deny(req_id, "Requested model is not permitted for your group.")
+    # 2. Model allowlist by Cognito group — enforced ONLY on a model-routing tool call that actually
+    #    carries the configured model-id key (exact match, not a substring scan). Ordinary tools pass.
+    if ALLOWED_BY_GROUP and MODEL_PARAM and body.get("method") == "tools/call":
+        requested_model = _extract_model(body.get("params", {}))
+        if requested_model is not None:
+            mapped = any(g in ALLOWED_BY_GROUP for g in groups)
+            if not mapped:
+                # Group has no entitlement entry — apply the explicit default (never silently pass).
+                if MODEL_DEFAULT != "allow":
+                    return _deny(req_id, "Your group has no model entitlement for model-routing tools.")
+            else:
+                allowed = {m for g in groups for m in ALLOWED_BY_GROUP.get(g, [])}
+                if not _model_allowed(str(requested_model), allowed):
+                    return _deny(req_id, f"Model '{requested_model}' is not permitted for your group.")
 
     # 3. Per-user request rate limit (fixed-minute window token bucket).
     if RATE_PER_MINUTE > 0:

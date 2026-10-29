@@ -8,6 +8,7 @@
     "build": "tsc",
     "watch": "tsc -w",
     "test": "jest",
+    "test:lambda": "python -m pytest test/lambda -q",
     "synth": "cdk synth --quiet",
     "synth:standalone": "cdk synth --quiet -c mode=standalone",
     "synth:hub": "cdk synth --quiet -c mode=hub",

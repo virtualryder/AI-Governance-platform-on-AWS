@@ -67,8 +67,18 @@ export interface PerUserGovernanceConfig {
   downgradeAtTokens?: number;
   fallbackModelId?: string;
   ratePerMinute?: number;
-  /** Cognito-group -> allowed model-family entitlement. */
+  /** Cognito-group -> allowed model-family entitlement. Matching is boundary-anchored prefix on the
+   * requested model id (e.g. entry `anthropic.claude-sonnet-4-5` matches `...-4-5-2025...-v1:0`),
+   * NOT a substring scan of arbitrary parameters. */
   allowedModelsByGroup?: Record<string, string[]>;
+  /** Exact JSON key that carries the model id on a model-routing tool call (checked at the top level
+   * of `params` and under `params.arguments`). The model allowlist is enforced ONLY when this key is
+   * present on a `tools/call`; ordinary tools without it are never model-gated. Empty/unset disables
+   * interceptor model gating entirely (runtime IAM remains the hard bound — see `allowedModelIds`). */
+  modelParamName?: string;
+  /** How to treat a model-routing call from a user whose groups have NO allowlist entry.
+   * 'deny' (default, recommended) blocks; 'allow' passes. Never silently passes. */
+  modelAllowlistDefault?: 'deny' | 'allow';
 }
 
 export interface PlatformConfig {

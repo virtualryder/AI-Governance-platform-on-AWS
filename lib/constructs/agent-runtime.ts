@@ -52,6 +52,21 @@ export class AgentRuntime extends Construct {
         resources: [`arn:${stack.partition}:logs:${stack.region}:${stack.account}:log-group:/aws/bedrock-agentcore/*`],
       }),
     );
+    // Scope inference to the configured allowlist (F09): foundation-model ARNs for each allowed id,
+    // plus the matching cross-region inference profiles (the agent's MODEL_ID is typically a profile
+    // like us.anthropic.*). Falls back to a broad grant ONLY if no models are configured (which the
+    // schema disallows — allowedModelIds is required). This replaces the previous foundation-model/*.
+    const modelIds = config.agentcore.allowedModelIds ?? [];
+    const modelResources = modelIds.length
+      ? modelIds.flatMap((id) => [
+          `arn:${stack.partition}:bedrock:*::foundation-model/${id}`,
+          // `*` prefix covers the geo-prefixed cross-region profile ids (us./eu./apac.<id>).
+          `arn:${stack.partition}:bedrock:*:${stack.account}:inference-profile/*${id}`,
+        ])
+      : [
+          `arn:${stack.partition}:bedrock:*::foundation-model/*`,
+          `arn:${stack.partition}:bedrock:*:${stack.account}:inference-profile/*`,
+        ];
     this.role.addToPolicy(
       new iam.PolicyStatement({
         sid: 'GovernedInference',
@@ -63,10 +78,9 @@ export class AgentRuntime extends Construct {
           'bedrock:ApplyGuardrail',
         ],
         resources: [
-          `arn:${stack.partition}:bedrock:*::foundation-model/*`,
-          // Cross-region inference profiles (e.g. us.anthropic.*) are account-scoped per region; the
-          // agent's configured MODEL_ID is a profile, so InvokeModel needs the profile ARN too.
-          `arn:${stack.partition}:bedrock:*:${stack.account}:inference-profile/*`,
+          ...modelResources,
+          // Customer-created application inference profiles are account-local, arbitrarily named
+          // resources; account-scope them rather than enumerate.
           `arn:${stack.partition}:bedrock:*:${stack.account}:application-inference-profile/*`,
           `arn:${stack.partition}:bedrock:${stack.region}:${stack.account}:guardrail/*`,
         ],

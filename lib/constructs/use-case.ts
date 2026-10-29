@@ -34,6 +34,10 @@ export class UseCase extends Construct {
   readonly targets: bac.CfnGatewayTarget[] = [];
   readonly targetNames: string[] = [];
   readonly policies: bac.CfnPolicy[] = [];
+  /** The consequential action's tool name (manifest workflow.consequential_action), if any. */
+  readonly consequentialTool?: string;
+  /** ARN of the tool Lambda hosting the consequential action — the HITL executor's wired target. */
+  readonly consequentialTargetArn?: string;
 
   constructor(scope: Construct, id: string, props: UseCaseProps) {
     super(scope, id);
@@ -48,6 +52,7 @@ export class UseCase extends Construct {
     const toolToTarget: Record<string, string> = {};
     for (const t of manifest.tools) for (const mt of t.mcp_tools ?? []) toolToTarget[mt.name] = t.target;
 
+    const targetToFn: Record<string, lambda.Function> = {};
     for (const t of manifest.tools) {
       const fn = new lambda.Function(this, `Tool-${t.target}`, {
         runtime: lambda.Runtime.PYTHON_3_13,
@@ -58,6 +63,7 @@ export class UseCase extends Construct {
       });
       fn.grantInvoke(props.gatewayRole);
       this.toolLambdas.push(fn);
+      targetToFn[t.target] = fn;
 
       const inlinePayload = (t.mcp_tools ?? []).map((mt: any) => ({
         name: mt.name,
@@ -110,6 +116,14 @@ export class UseCase extends Construct {
       // Targets define the action schema the forbid references; create policies after them.
       for (const target of this.targets) policy.addDependency(target);
       this.policies.push(policy);
+    }
+
+    // The consequential action (owned by the HITL gate, Cedar-forbidden to the agent). Expose the
+    // Lambda hosting it so the Controls stack can wire it as the HITL executor's target.
+    const consequential: string | undefined = manifest.workflow?.consequential_action;
+    if (consequential && toolToTarget[consequential]) {
+      this.consequentialTool = consequential;
+      this.consequentialTargetArn = targetToFn[toolToTarget[consequential]]?.functionArn;
     }
   }
 }

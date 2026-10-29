@@ -7,30 +7,48 @@ import * as subs from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as kms from 'aws-cdk-lib/aws-kms';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import { Construct } from 'constructs';
 import { PlatformConfig } from '../config/platform-config';
 import { toRetentionDays } from './retention';
 
 export interface HumanInTheLoopProps {
   config: PlatformConfig;
-  /** CMK for the approval SNS topic + state machine logs. */
+  /** CMK for the approval SNS topic, approvals table, and state machine logs. */
   encryptionKey: kms.IKey;
+  /** The single Lambda ARN the executor invokes to perform the approved action (the use-case submit
+   * tool). Platform-wired, never supplied by the agent. Empty => the executor records the decision but
+   * performs no side effect. */
+  executorTargetArn?: string;
 }
 
 /**
- * Human-in-the-loop approval gate. A consequential action starts this state machine, which publishes
- * an approval request to SNS with a Step Functions task token and WAITS (waitForTaskToken). An
- * approver resolves it by invoking the approval Lambda with the token — success routes to Approved,
- * failure (or the 24h timeout) routes to Rejected. The agent harness starts/awaits this per manifest.
+ * Human-in-the-loop approval gate — a COMPLETE control, not just a primitive (F05). A consequential
+ * action starts this state machine, which:
+ *   1. RecordProposed  — writes the proposal keyed by an action digest (dedupe: a second proposal of
+ *      the same digest is rejected, the replay guard at propose time).
+ *   2. RequestApproval — SNS waitForTaskToken; an authorized approver resolves it (approve/reject),
+ *      binding their identity. 24h timeout => rejected.
+ *   3. Execute         — on approval, a SEPARATELY-SCOPED executor Lambda performs the action exactly
+ *      once (claims PENDING->EXECUTING->COMPLETED), through a role the agent does not have (the agent
+ *      is Cedar-forbidden from the action — separation of duties).
+ *   4. Record outcome  — approver, actor, decision, timestamps and result are persisted for audit.
+ *
+ * The agent harness starts this state machine at the consequential step (StartExecution granted on the
+ * deterministic SM name) instead of performing the action itself.
  */
 export class HumanInTheLoop extends Construct {
   readonly stateMachine: sfn.StateMachine;
   readonly approvalTopic: sns.Topic;
   readonly approvalFn: lambda.Function;
+  readonly executorFn: lambda.Function;
+  readonly approvals: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props: HumanInTheLoopProps) {
     super(scope, id);
-    const { config, encryptionKey } = props;
+    const { config, encryptionKey, executorTargetArn } = props;
+    const isProd = config.environment === 'prod';
 
     this.approvalTopic = new sns.Topic(this, 'Topic', {
       displayName: `Governed AI approvals (${config.customerName})`,
@@ -40,34 +58,111 @@ export class HumanInTheLoop extends Construct {
       this.approvalTopic.addSubscription(new subs.EmailSubscription(email));
     }
 
+    // Approval ledger: one item per action digest. Idempotency, replay protection, and audit.
+    this.approvals = new dynamodb.Table(this, 'Approvals', {
+      partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING }, // pk = actionDigest
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      encryption: dynamodb.TableEncryption.CUSTOMER_MANAGED,
+      encryptionKey,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
+      removalPolicy: isProd ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
+    });
+
+    this.executorFn = new lambda.Function(this, 'ExecutorFn', {
+      runtime: lambda.Runtime.PYTHON_3_13,
+      handler: 'index.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '..', 'lambda', 'hitl-executor')),
+      timeout: Duration.seconds(60),
+      description: 'Performs the approved consequential action exactly once (separation of duties).',
+      environment: {
+        APPROVALS_TABLE: this.approvals.tableName,
+        TARGET_ARN: executorTargetArn ?? '',
+      },
+    });
+    this.approvals.grantReadWriteData(this.executorFn);
+    if (executorTargetArn) {
+      this.executorFn.addToRolePolicy(
+        new iam.PolicyStatement({ actions: ['lambda:InvokeFunction'], resources: [executorTargetArn] }),
+      );
+    }
+
+    // --- State machine definition ---
+    const recordProposed = new tasks.DynamoPutItem(this, 'RecordProposed', {
+      table: this.approvals,
+      item: {
+        pk: tasks.DynamoAttributeValue.fromString(sfn.JsonPath.stringAt('$.actionDigest')),
+        status: tasks.DynamoAttributeValue.fromString('PENDING'),
+        actor: tasks.DynamoAttributeValue.fromString(sfn.JsonPath.stringAt('$.actor')),
+        action: tasks.DynamoAttributeValue.fromString(sfn.JsonPath.stringAt('$.action')),
+        caseId: tasks.DynamoAttributeValue.fromString(sfn.JsonPath.stringAt('$.caseId')),
+        argsJson: tasks.DynamoAttributeValue.fromString(sfn.JsonPath.jsonToString(sfn.JsonPath.objectAt('$.args'))),
+      },
+      conditionExpression: 'attribute_not_exists(pk)', // dedupe: reject a duplicate digest (replay)
+      resultPath: sfn.JsonPath.DISCARD,
+    });
+    recordProposed.addCatch(new sfn.Fail(this, 'DuplicateProposal', { error: 'DuplicateProposal' }), {
+      errors: ['DynamoDB.ConditionalCheckFailedException'],
+    });
+
     const requestApproval = new tasks.SnsPublish(this, 'RequestApproval', {
       topic: this.approvalTopic,
       integrationPattern: sfn.IntegrationPattern.WAIT_FOR_TASK_TOKEN,
       subject: 'Governed AI: human approval required',
       message: sfn.TaskInput.fromObject({
         taskToken: sfn.JsonPath.taskToken,
-        action: sfn.JsonPath.entirePayload,
+        actionDigest: sfn.JsonPath.stringAt('$.actionDigest'),
+        action: sfn.JsonPath.stringAt('$.action'),
+        actor: sfn.JsonPath.stringAt('$.actor'),
+        caseId: sfn.JsonPath.stringAt('$.caseId'),
+        args: sfn.JsonPath.objectAt('$.args'),
       }),
       taskTimeout: sfn.Timeout.duration(Duration.hours(24)),
+      resultPath: '$.approval', // {approved, approver, approvedAt}
     });
-    requestApproval.addCatch(new sfn.Fail(this, 'Rejected', { error: 'Rejected' }), {
+
+    const execute = new tasks.LambdaInvoke(this, 'Execute', {
+      lambdaFunction: this.executorFn,
+      payload: sfn.TaskInput.fromObject({
+        actionDigest: sfn.JsonPath.stringAt('$.actionDigest'),
+        action: sfn.JsonPath.stringAt('$.action'),
+        args: sfn.JsonPath.objectAt('$.args'),
+        actor: sfn.JsonPath.stringAt('$.actor'),
+        caseId: sfn.JsonPath.stringAt('$.caseId'),
+        approver: sfn.JsonPath.stringAt('$.approval.approver'),
+        approvedAt: sfn.JsonPath.stringAt('$.approval.approvedAt'),
+      }),
+      resultPath: '$.execution',
+    });
+
+    // On reject/timeout, record the rejection for audit, then end as failed.
+    const recordRejected = new tasks.DynamoUpdateItem(this, 'RecordRejected', {
+      table: this.approvals,
+      key: { pk: tasks.DynamoAttributeValue.fromString(sfn.JsonPath.stringAt('$.actionDigest')) },
+      updateExpression: 'SET #s = :rejected',
+      expressionAttributeNames: { '#s': 'status' },
+      expressionAttributeValues: { ':rejected': tasks.DynamoAttributeValue.fromString('REJECTED') },
+      resultPath: sfn.JsonPath.DISCARD,
+    });
+    requestApproval.addCatch(recordRejected.next(new sfn.Fail(this, 'Rejected', { error: 'Rejected' })), {
       errors: ['States.ALL'],
     });
+
+    const definition = recordProposed
+      .next(requestApproval)
+      .next(execute)
+      .next(new sfn.Succeed(this, 'Completed'));
 
     const logGroup = new logs.LogGroup(this, 'Logs', {
       encryptionKey,
       retention: toRetentionDays(config.governance.logRetentionDays),
-      removalPolicy: config.environment === 'prod' ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
+      removalPolicy: isProd ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
     });
 
     this.stateMachine = new sfn.StateMachine(this, 'Approval', {
       stateMachineName: `govai-${config.customerName}-${config.environment}-hitl`,
-      definitionBody: sfn.DefinitionBody.fromChainable(
-        requestApproval.next(new sfn.Succeed(this, 'Approved')),
-      ),
+      definitionBody: sfn.DefinitionBody.fromChainable(definition),
       timeout: Duration.hours(25),
       tracingEnabled: true,
-      // Full audit of approval decisions (includes the action payload under evaluation).
       logs: { destination: logGroup, level: sfn.LogLevel.ALL, includeExecutionData: true },
     });
 
@@ -76,7 +171,7 @@ export class HumanInTheLoop extends Construct {
       handler: 'index.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '..', 'lambda', 'hitl-approval')),
       timeout: Duration.seconds(30),
-      description: 'Resolve a waiting HITL approval (send task success/failure).',
+      description: 'Resolve a waiting HITL approval (send task success/failure, binding the approver).',
     });
     this.stateMachine.grantTaskResponse(this.approvalFn);
   }

@@ -6,12 +6,13 @@ is the bearer for every governed Gateway (MCP) tool call, so Cedar evaluates the
 The agent never commits the consequential action; it requests human sign-off (separation of duties).
 """
 import base64
+import hashlib
 import json
 import os
 import logging
 import boto3
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
-from strands import Agent
+from strands import Agent, tool
 from strands.models import BedrockModel
 from strands.tools.mcp import MCPClient
 from mcp.client.streamable_http import streamablehttp_client
@@ -26,6 +27,9 @@ REGION = os.environ.get("AWS_REGION", "us-east-1")
 # Approved guardrail pinned by the platform baseline (passed in by the AgentPlatform stack).
 GUARDRAIL_ID = os.environ.get("GUARDRAIL_ID", "")
 GUARDRAIL_VERSION = os.environ.get("GUARDRAIL_VERSION", "")
+# Human-in-the-loop: the consequential action is performed only after approval, via the state machine.
+HITL_SM_ARN = os.environ.get("HITL_STATE_MACHINE_ARN", "")
+CONSEQUENTIAL_ACTION = os.environ.get("CONSEQUENTIAL_ACTION", "submit_service_request")
 GATEWAY_URL_ENV = os.environ.get("GATEWAY_URL", "")
 GATEWAY_SSM_PARAM = os.environ.get("GATEWAY_SSM_PARAM", "")
 
@@ -113,7 +117,33 @@ def invoke(payload, context=None):
                           "masked, audited, or submitted.",
                 "tools_available": [], "governed": True,
             }
-        agent = Agent(model=model, tools=tools, system_prompt=SYSTEM)
+        @tool
+        def request_human_signoff(category: str, address: str, details: str = "") -> dict:
+            """Request human sign-off to file the 311 service request (the consequential action the
+            agent is NOT permitted to perform directly). Starts the approval workflow; a human
+            approver must approve before anything is filed. Returns the pending approval id."""
+            if not HITL_SM_ARN:
+                return {"status": "no_hitl_configured", "note": "approval gate not deployed"}
+            args = {"category": category, "address": address, "details": details}
+            digest = hashlib.sha256(
+                json.dumps({"action": CONSEQUENTIAL_ACTION, "args": args, "case": case_id}, sort_keys=True).encode()
+            ).hexdigest()
+            resp = boto3.client("stepfunctions", region_name=REGION).start_execution(
+                stateMachineArn=HITL_SM_ARN,
+                input=json.dumps(
+                    {
+                        "actionDigest": digest,
+                        "action": CONSEQUENTIAL_ACTION,
+                        "args": args,
+                        "actor": subject,
+                        "caseId": case_id,
+                    }
+                ),
+            )
+            log.info("hitl_signoff_requested actor=%s case=%s digest=%s", subject, case_id, digest[:12])
+            return {"status": "pending_approval", "executionArn": resp["executionArn"], "actionDigest": digest}
+
+        agent = Agent(model=model, tools=tools + [request_human_signoff], system_prompt=SYSTEM)
         result = agent(prompt)
     log.info("invocation_complete requester=%s case_id=%s result_chars=%d", requester, case_id, len(str(result)))
     return {"result": str(result), "tools_available": names}

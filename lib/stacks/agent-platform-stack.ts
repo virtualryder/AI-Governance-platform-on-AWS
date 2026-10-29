@@ -77,6 +77,15 @@ export class AgentPlatformStack extends PlatformStack {
       new Observability(this, 'Observability', { config: this.config });
     }
 
+    // HITL: the runtime starts the approval state machine (deterministic name) for consequential
+    // actions. Passed as env so the harness can StartExecution.
+    const hitlEnv: Record<string, string> = this.config.controls.humanInTheLoop
+      ? {
+          HITL_STATE_MACHINE_ARN: `arn:${this.partition}:states:${this.region}:${this.account}:stateMachine:govai-${this.config.customerName}-${this.config.environment}-hitl`,
+          ...(this.useCase?.consequentialTool ? { CONSEQUENTIAL_ACTION: this.useCase.consequentialTool } : {}),
+        }
+      : {};
+
     // Approved guardrail published by the baseline — pinned into the runtime so every model call is
     // governed (and so the ungoverned-inference deny below does not fail-close the agent).
     const guardrailEnv: Record<string, string> = {};
@@ -102,6 +111,7 @@ export class AgentPlatformStack extends PlatformStack {
           ...(this.memory ? { MEMORY_ID: this.memory.memoryId } : {}),
           WORKLOAD_IDENTITY_ARN: workloadIdentity.attrWorkloadIdentityArn,
           ...guardrailEnv,
+          ...hitlEnv,
         },
       });
 
@@ -135,6 +145,10 @@ export class AgentPlatformStack extends PlatformStack {
       this.publish('agent-platform/interceptor-ledger', this.interceptor.ledger.tableName, 'Per-user governance ledger table');
     }
     if (this.runtime) this.publish('agent-platform/runtime-arn', this.runtime.runtimeArn, 'AgentCore runtime ARN');
+    if (this.useCase?.consequentialTargetArn) {
+      // The HITL executor (Controls stack) performs this action after approval — the agent is forbidden it.
+      this.publish('agent-platform/consequential-target-arn', this.useCase.consequentialTargetArn, 'HITL executor target Lambda ARN');
+    }
     this.publish('agent-platform/version', '0.2.0', 'AgentPlatform stack version');
 
     applyAgentPlatformNagSuppressions(this, {

@@ -71,5 +71,21 @@ export function applyControlsNagSuppressions(stack: Stack, opts: { hasHitl: bool
           'scoping to a single state machine.',
       },
     ]);
+    NagSuppressions.addResourceSuppressionsByPath(stack, `${sid}/Hitl/ExecutorFn/ServiceRole/DefaultPolicy/Resource`, [
+      {
+        id: 'AwsSolutions-IAM5',
+        reason:
+          'grantReadWriteData scopes DynamoDB to the approvals table plus its index wildcard (table/index/*), ' +
+          'which is required and table-scoped; the executor target invoke is scoped to the single configured ARN.',
+      },
+    ]);
+    NagSuppressions.addResourceSuppressionsByPath(stack, `${sid}/Hitl/Approvals/Resource`, [
+      {
+        id: 'HIPAA.Security-DynamoDBInBackupPlan',
+        reason:
+          'The approvals ledger uses point-in-time recovery + a customer-managed CMK and is RETAINed in prod. ' +
+          'Enrolling it in an AWS Backup plan is a per-customer DR decision made at rollout, not a platform default.',
+      },
+    ]);
   }
 }

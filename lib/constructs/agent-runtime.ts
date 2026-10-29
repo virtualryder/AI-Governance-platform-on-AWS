@@ -27,6 +27,8 @@ export class AgentRuntime extends Construct {
   readonly runtime: bac.CfnRuntime;
   readonly endpoint: bac.CfnRuntimeEndpoint;
   readonly role: iam.Role;
+  /** Deterministic HITL state-machine ARN the runtime may StartExecution on (when HITL is enabled). */
+  readonly hitlStateMachineArn?: string;
 
   constructor(scope: Construct, id: string, props: AgentRuntimeProps) {
     super(scope, id);
@@ -93,6 +95,20 @@ export class AgentRuntime extends Construct {
         resources: [kmsKeyArn],
       }),
     );
+
+    // Human-in-the-loop: the agent starts the approval state machine for consequential actions instead
+    // of performing them. The SM name is deterministic, so this grants StartExecution without a
+    // cross-stack reference (Controls, which owns the SM, deploys after AgentPlatform).
+    if (config.controls.humanInTheLoop) {
+      this.hitlStateMachineArn = `arn:${stack.partition}:states:${stack.region}:${stack.account}:stateMachine:govai-${config.customerName}-${config.environment}-hitl`;
+      this.role.addToPolicy(
+        new iam.PolicyStatement({
+          sid: 'StartHitlApproval',
+          actions: ['states:StartExecution'],
+          resources: [this.hitlStateMachineArn],
+        }),
+      );
+    }
 
     // Multi-agent A2A collaboration: inter-agent invoke authz for allow-listed remote collaborators,
     // OBO token exchange, registry publish, and config passed to the Strands harness (which builds the

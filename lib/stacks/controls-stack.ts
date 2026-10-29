@@ -34,7 +34,12 @@ export class ControlsStack extends PlatformStack {
     this.budget = new PlatformBudget(this, 'Budget', { config: this.config });
 
     if (this.config.controls.humanInTheLoop) {
-      this.hitl = new HumanInTheLoop(this, 'Hitl', { config: this.config, encryptionKey });
+      // Wire the executor to the use-case's consequential-action Lambda (published by AgentPlatform,
+      // which Controls depends on). Only read it when a use-case manifest is deployed.
+      const executorTargetArn = this.config.agentcore.useCaseManifest
+        ? ssm.StringParameter.valueForStringParameter(this, `${this.paramPrefix}/agent-platform/consequential-target-arn`)
+        : undefined;
+      this.hitl = new HumanInTheLoop(this, 'Hitl', { config: this.config, encryptionKey, executorTargetArn });
     }
 
     if (this.config.controls.detectiveConfigRules) {
@@ -45,6 +50,7 @@ export class ControlsStack extends PlatformStack {
     if (this.hitl) {
       this.publish('controls/hitl-state-machine-arn', this.hitl.stateMachine.stateMachineArn, 'HITL state machine ARN');
       this.publish('controls/hitl-approval-topic-arn', this.hitl.approvalTopic.topicArn, 'HITL approval SNS topic ARN');
+      this.publish('controls/hitl-approvals-table', this.hitl.approvals.tableName, 'HITL approvals ledger table');
     }
     this.publish('controls/version', '0.1.0', 'Controls stack version');
 

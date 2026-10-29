@@ -231,6 +231,30 @@ test('controls: kill switch, monthly budget, and HITL approval', () => {
   t.hasResourceProperties('AWS::StepFunctions::StateMachine', {
     LoggingConfiguration: Match.objectLike({ Level: 'ALL' }),
   });
+  // End-to-end HITL (F05): an approvals ledger (idempotency/replay/audit) + a post-approval executor.
+  t.hasResourceProperties('AWS::DynamoDB::Table', {
+    SSESpecification: Match.objectLike({ SSEEnabled: true }),
+  });
+  const fns = t.findResources('AWS::Lambda::Function');
+  const hasExecutor = Object.values(fns).some((f: any) =>
+    (f.Properties.Description ?? '').includes('exactly once'),
+  );
+  expect(hasExecutor).toBe(true);
+});
+
+test('agent platform: runtime can start the HITL approval workflow but not perform the action (F05)', () => {
+  const t = agentPlatformTemplate((c) => {
+    c.agentcore.runtimeImageUri = '111111111111.dkr.ecr.us-east-1.amazonaws.com/agent:latest';
+  });
+  // Runtime env points at the HITL state machine; role may StartExecution on it.
+  t.hasResourceProperties('AWS::BedrockAgentCore::Runtime', {
+    EnvironmentVariables: Match.objectLike({ HITL_STATE_MACHINE_ARN: Match.anyValue() }),
+  });
+  const policies = t.findResources('AWS::IAM::Policy');
+  const canStart = Object.values(policies).some((p: any) =>
+    JSON.stringify(p.Properties.PolicyDocument).includes('states:StartExecution'),
+  );
+  expect(canStart).toBe(true);
 });
 
 test('controls: SRA detective Config rules when enabled', () => {

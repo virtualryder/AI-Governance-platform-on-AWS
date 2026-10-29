@@ -6,7 +6,10 @@ import { Stack } from 'aws-cdk-lib';
  * The kill-switch and HITL-approval functions are small control-plane Lambdas that touch only AWS
  * control-plane APIs and no customer data.
  */
-export function applyControlsNagSuppressions(stack: Stack, opts: { hasHitl: boolean; hasDetective?: boolean }): void {
+export function applyControlsNagSuppressions(
+  stack: Stack,
+  opts: { hasHitl: boolean; hasDetective?: boolean; hasKillSwitch?: boolean },
+): void {
   const sid = stack.stackName;
 
   if (opts.hasDetective) {
@@ -53,14 +56,16 @@ export function applyControlsNagSuppressions(stack: Stack, opts: { hasHitl: bool
     },
   ]);
 
-  NagSuppressions.addResourceSuppressionsByPath(stack, `${sid}/KillSwitch/Fn/ServiceRole/DefaultPolicy/Resource`, [
-    {
-      id: 'AwsSolutions-IAM5',
-      reason:
-        'The kill switch manages Cedar policies on the account policy engine; Create/Delete/ListPolicies take ' +
-        'no resource-level ARN. SSM access is scoped to the platform parameter prefix (/governed-ai/<c>/<e>/*).',
-    },
-  ]);
+  if (opts.hasKillSwitch) {
+    NagSuppressions.addResourceSuppressionsByPath(stack, `${sid}/KillSwitch/Fn/ServiceRole/DefaultPolicy/Resource`, [
+      {
+        id: 'AwsSolutions-IAM5',
+        reason:
+          'The kill switch manages Cedar policies on the account policy engine; Create/Delete/ListPolicies take ' +
+          'no resource-level ARN. SSM access is scoped to the platform parameter prefix (/governed-ai/<c>/<e>/*).',
+      },
+    ]);
+  }
 
   if (opts.hasHitl) {
     NagSuppressions.addResourceSuppressionsByPath(stack, `${sid}/Hitl/Approval/Role/DefaultPolicy/Resource`, [

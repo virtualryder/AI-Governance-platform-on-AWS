@@ -42,13 +42,9 @@
     "enableMemory": true,
     "memoryEventExpiryDays": 30,
     "accessTokenValidityMinutes": 15,
-    "allowedModelIds": ["anthropic.claude-sonnet-4-5-20250929-v1:0"],
-    "omni": {
-      "domainId": "d-exampleomni01",
-      "enableContextGraph": true,
-      "enableModelInference": true
-    }
+    "allowedModelIds": ["anthropic.claude-sonnet-4-5-20250929-v1:0"]
   },
+  "_comment_omni": "To enable the CloudWatch Omni upgrade (hub mode), add an agentcore.omni block with a REAL domainId (d-...) created during Omni onboarding. Omitted here so the example does not imply Omni is active with a placeholder domain.",
   "controls": {
     "monthlyBudgetUsd": 500,
     "budgetAlertEmails": ["ai-platform-owners@example.gov"],

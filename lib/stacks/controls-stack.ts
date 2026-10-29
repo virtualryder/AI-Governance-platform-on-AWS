@@ -15,7 +15,7 @@ import { applyControlsNagSuppressions } from './controls-nag-suppressions';
  * from SSM. Deployed in standalone and spoke modes.
  */
 export class ControlsStack extends PlatformStack {
-  readonly killSwitch: KillSwitch;
+  readonly killSwitch?: KillSwitch;
   readonly budget: PlatformBudget;
   readonly hitl?: HumanInTheLoop;
   readonly detective?: DetectiveRules;
@@ -26,10 +26,13 @@ export class ControlsStack extends PlatformStack {
     const keyArn = ssm.StringParameter.valueForStringParameter(this, `${this.paramPrefix}/baseline/evidence-key-arn`);
     const encryptionKey = kms.Key.fromKeyArn(this, 'EvidenceKey', keyArn);
 
-    this.killSwitch = new KillSwitch(this, 'KillSwitch', {
-      config: this.config,
-      paramPrefix: this.paramPrefix,
-    });
+    // The kill switch is an opt-in control (controls.killSwitch); it was previously created regardless.
+    if (this.config.controls.killSwitch) {
+      this.killSwitch = new KillSwitch(this, 'KillSwitch', {
+        config: this.config,
+        paramPrefix: this.paramPrefix,
+      });
+    }
 
     this.budget = new PlatformBudget(this, 'Budget', { config: this.config });
 
@@ -46,7 +49,9 @@ export class ControlsStack extends PlatformStack {
       this.detective = new DetectiveRules(this, 'Detective', { config: this.config });
     }
 
-    this.publish('controls/kill-switch-fn-arn', this.killSwitch.fn.functionArn, 'Kill switch Lambda ARN');
+    if (this.killSwitch) {
+      this.publish('controls/kill-switch-fn-arn', this.killSwitch.fn.functionArn, 'Kill switch Lambda ARN');
+    }
     if (this.hitl) {
       this.publish('controls/hitl-state-machine-arn', this.hitl.stateMachine.stateMachineArn, 'HITL state machine ARN');
       this.publish('controls/hitl-approval-topic-arn', this.hitl.approvalTopic.topicArn, 'HITL approval SNS topic ARN');
@@ -54,6 +59,10 @@ export class ControlsStack extends PlatformStack {
     }
     this.publish('controls/version', '0.1.0', 'Controls stack version');
 
-    applyControlsNagSuppressions(this, { hasHitl: !!this.hitl, hasDetective: !!this.detective });
+    applyControlsNagSuppressions(this, {
+      hasHitl: !!this.hitl,
+      hasDetective: !!this.detective,
+      hasKillSwitch: !!this.killSwitch,
+    });
   }
 }

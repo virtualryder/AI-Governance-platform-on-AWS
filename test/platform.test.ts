@@ -274,6 +274,18 @@ test('controls: HITL omitted when disabled', () => {
   t.resourceCountIs('AWS::StepFunctions::StateMachine', 0);
 });
 
+test('controls: kill switch is omitted when controls.killSwitch is false (F15)', () => {
+  const t = controlsTemplate((c) => {
+    c.controls.killSwitch = false;
+  });
+  // No kill-switch Lambda (the forbid-all control-plane function) when not opted in.
+  const fns = t.findResources('AWS::Lambda::Function');
+  const hasKill = Object.values(fns).some((f: any) =>
+    (f.Properties.Description ?? '').toLowerCase().includes('kill switch'),
+  );
+  expect(hasKill).toBe(false);
+});
+
 test('governance hub: central log archive + OAM sink in hub mode; collapsed in standalone', () => {
   const app = new App();
   const hub = Template.fromStack(

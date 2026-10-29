@@ -100,7 +100,7 @@ accepted* is the second-operator run.
 | Gate | Scope | Status |
 |---|---|---|
 | 1 | Truthful scope + safe defaults (enforce by default, honest claims) | ✅ done |
-| 2 | **Standalone reference** — full governed workflow | live-verified (2026-10-29); second-review blockers fixed (locally verified) — **release-accepted** pending a second-operator run |
+| 2 | **Standalone reference** — full governed workflow | **live-verified** (2026-10-29, post-fix: authorized/unauthorized/lookalike, HITL approve+reject+replay, kill-switch engage/release, no standalone hub leak) — **release-accepted** pending a second-operator run |
 | 3 | Connected hub/spoke (OAM links, evidence replication, catalog shares) | 🔨 built + verified — needs 2 accounts in one Org to close |
 | 4 | Org enforcement (SCP principal alignment, delegated-admin, budget scope) | 🔨 built + verified — needs a test OU to close |
 | 5 | Optional (A2A orchestration, private VPC networking, Memory, Omni) | 🔨 built + verified — needs a 2nd agent / VPC / Omni domain to close |

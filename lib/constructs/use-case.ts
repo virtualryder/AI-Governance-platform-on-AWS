@@ -99,9 +99,12 @@ export class UseCase extends Construct {
       let statement: string;
       if (p.kind === 'permit') {
         const grp = p.role_group ?? reviewerGroup;
+        // Match the group as a QUOTED token (the cognito:groups tag is a JSON-array string), so a
+        // lookalike like "csr-agents-readonly" does NOT satisfy a permit for "csr-agents" (B5a). A
+        // bare substring `*grp*` matched lookalikes — confirmed live and fixed here.
         statement =
           'permit(principal is AgentCore::OAuthUser, action, resource is AgentCore::Gateway) when { ' +
-          `principal.hasTag("cognito:groups") && principal.getTag("cognito:groups") like "*${grp}*" };`;
+          `principal.hasTag("cognito:groups") && principal.getTag("cognito:groups") like "*\\"${grp}\\"*" };`;
       } else {
         const aid = `${toolToTarget[p.action]}___${p.action}`;
         statement =

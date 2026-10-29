@@ -196,7 +196,7 @@ export class HumanInTheLoop extends Construct {
     this.approverRole = new iam.Role(this, 'ApproverRole', {
       roleName: `govai-${config.customerName}-${config.environment}-hitl-approver`,
       assumedBy: new iam.AccountRootPrincipal(),
-      description: 'HITL supervisor role — the only principal permitted to resolve approvals.',
+      description: 'HITL supervisor role - the only principal permitted to resolve approvals.',
     });
     this.approvalFn.grantInvoke(this.approverRole);
   }

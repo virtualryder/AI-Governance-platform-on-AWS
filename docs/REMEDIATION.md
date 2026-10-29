@@ -12,13 +12,30 @@ accepted** (reproduced by a second operator via the §15 gate). Fixes landed:
 | B2 | Runbook used the Cognito **ID token** vs the client_id authorizer | Runbook uses the **access token**; LOG_ONLY references removed (ENFORCE is the sole governed-MVP path) | implemented |
 | B3 | HITL: reject/timeout dropped the digest; Lambda FunctionError counted as success; stranded EXECUTING | Catch `resultPath` preserves input; executor honours **FunctionError** + app error (→ FAILED), transport failure → **UNKNOWN** (reconcile via idempotency key); approval bound to a dedicated supervisor role | locally verified |
 | B4 | Kill-switch **engage** reported success on `CREATE_FAILED` | Engage now requires a successful terminal (ACTIVE) state + ACTIVE enforcement; raises + keeps a conservative `engaging` state otherwise; policy-engine IAM scoped to this platform's engine | locally verified |
-| B5 | Empty model allowlist failed open; model/group matching not exact | `allowedModelIds` non-empty enforced (fail closed); interceptor uses **exact** model equality; group-substring limitation documented (needs interceptor/claim-based exact membership) | locally verified |
+| B5 | Empty model allowlist failed open; model/group matching not exact | `allowedModelIds` non-empty enforced (fail closed); interceptor uses **exact** model equality; **Cedar group match now uses a quoted-token pattern (`*"grp"*`) so a lookalike group no longer satisfies the permit** | **live verified** (lookalike `csr-agents-readonly` denied; exact `csr-agents` authorized) |
 | B6 | Runbook/scripts not a clean handoff | Scripts marked executable; `create-human-user.sh` skips empty group; `--cli-binary-format`/`fileb://` approval example; copy-paste authenticated invoke; Docker-for-synth prereq; pinned `requirements-dev.txt`; boto3 pinned in bundling | implemented |
 | — | Optional-capability SDK defects (memory `eventTimestamp`, OBO `workloadName`, registry client) | Memory `eventTimestamp` added; memory/browser/A2A/registry/VPC **off in the MVP profile**; OBO/registry calls remain best-effort + labeled not-live-validated | implemented |
 
-**Remaining to reach *release accepted* (standalone):** a second operator reproduces the §15 acceptance
-matrix from a clean checkout in a fresh account (incl. the negative/failure paths). Group-exact Cedar
-membership, real-backend integration, and existing-account logging adoption/restore remain qualified.
+**Live re-validation (2026-10-29, post-fix, account 864217980669).** The standalone MVP profile was
+deployed and the acceptance matrix run against real AWS:
+
+| Test | Result |
+|---|---|
+| Standalone synth | ✅ no external OAM link / no remote replication (B1) |
+| Authorized `csr-alice` (csr-agents) | ✅ 4 governed tools; `submit_service_request` absent (Cedar forbid) |
+| Unauthorized `viewer-bob` (no group) | ✅ denied, empty tool list |
+| **Lookalike `csr-readonly` (csr-agents-readonly)** | ✅ **denied** after the quoted-token fix (was authorized before) |
+| HITL approve → execute | ✅ exactly once (`SR-DEMO-0001`), ledger `COMPLETED`, approver bound |
+| HITL reject | ✅ execution FAILED, ledger `REJECTED`, no submit (B3a resultPath fix) |
+| Replay (re-run approved digest) | ✅ `already_handled, executed:false` |
+| Kill-switch engage / release | ✅ engage reached `ACTIVE` → tools `[]`; release restored 4 tools (fail-closed engage) |
+| Existing invocation logging | ✅ none pre-existing; `create` mode set it cleanly |
+
+**Not live-exercised here (unit-tested only):** Lambda FunctionError→FAILED and transport→UNKNOWN
+(require injecting a tool failure), kill-switch CREATE_FAILED→not-engaged, expired/wrong-client token.
+**Remaining to reach *release accepted*:** a **second operator** reproduces the §15 matrix (incl. those
+failure paths) from a clean checkout. Real-backend integration and existing-account logging
+adoption/restore remain qualified.
 
 ---
 

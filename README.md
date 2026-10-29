@@ -78,13 +78,28 @@ Copy `config/platform.example.json` to `config/<customer>.json` for each custome
 ## Maturity
 
 This is a **governance accelerator undergoing a defined hardening + validation phase** — not a
-production-certified, four-mode product. An independent readiness review (29 Oct 2026) found several
-controls that were provisioned but not wired end to end; those critical defects have since been fixed
-(see [`docs/REMEDIATION.md`](docs/REMEDIATION.md)). The honest per-capability status:
+production-certified, four-mode product. An independent readiness review (29 Oct 2026) raised 16
+findings; **all 16 are now addressed in code** (see [`docs/REMEDIATION.md`](docs/REMEDIATION.md)).
+Everything below is `npm test` + `cdk-nag`-clean across all four modes; the distinction that matters is
+**which parts have been validated against live AWS** vs. built-and-verified-but-not-yet-live.
+
+**Gate status (hardening plan):**
+
+| Gate | Scope | Status |
+|---|---|---|
+| 1 | Truthful scope + safe defaults (enforce by default, honest claims) | ✅ done |
+| 2 | **Standalone reference** — full governed workflow | ✅ **live-validated** in a real account (2026-10-29) |
+| 3 | Connected hub/spoke (OAM links, evidence replication, catalog shares) | 🔨 built + verified — needs 2 accounts in one Org to close |
+| 4 | Org enforcement (SCP principal alignment, delegated-admin, budget scope) | 🔨 built + verified — needs a test OU to close |
+| 5 | Optional (A2A orchestration, private VPC networking, Memory, Omni) | 🔨 built + verified — needs a 2nd agent / VPC / Omni domain to close |
+
+Gates 3–5 are blocked **only** on multi-account / VPC / second-agent infrastructure, not on code — the
+runbook (`docs/runbooks/DEPLOYMENT.md` §12c/§12d/§12e) is the reproducible path to close each once that
+infrastructure exists. Per-capability detail:
 
 | Capability | Status | Notes |
 |---|---|---|
-| CDK build / 4-mode synth / cdk-nag | **Live-tested** (local) | 30 jest + 17 pytest green; nag clean ×4 modes |
+| CDK build / 4-mode synth / cdk-nag | **Live-tested** (local) | 41 jest + 17 pytest green; nag clean ×4 modes |
 | Standalone foundation (baseline + platform + controls) | **Live-tested** (2026-10-29) | deployed to a real account; enforcing Cedar, guardrail pinned to runtime, HITL end-to-end, safe logging ownership — all exercised live |
 | citizen-311 governed workflow | **Live-validated** (post-fix) | full workflow run in-account: authorized/denied/approved/kill-switch all pass — see `docs/REMEDIATION.md` Gate 2 |
 | Kill switch / guardrail enforcement / interceptor | **Live-tested + unit-tested** | engage→block→release→restore verified live; behavioral pytest for kill-switch + interceptor + HITL executor + logging ownership |

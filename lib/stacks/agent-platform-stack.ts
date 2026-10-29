@@ -9,6 +9,7 @@ import { AgentMemory } from '../constructs/agent-memory';
 import { AgentTools } from '../constructs/agent-tools';
 import { AgentRuntime } from '../constructs/agent-runtime';
 import { GatewayInterceptor } from '../constructs/gateway-interceptor';
+import { UseCase } from '../constructs/use-case';
 import { Observability } from '../constructs/observability';
 import { applyAgentPlatformNagSuppressions } from './agent-platform-nag-suppressions';
 
@@ -24,6 +25,7 @@ export class AgentPlatformStack extends PlatformStack {
   readonly tools: AgentTools;
   readonly runtime?: AgentRuntime;
   readonly interceptor?: GatewayInterceptor;
+  readonly useCase?: UseCase;
 
   constructor(scope: Construct, id: string, props: PlatformStackProps) {
     super(scope, id, props);
@@ -60,6 +62,16 @@ export class AgentPlatformStack extends PlatformStack {
 
     this.tools = new AgentTools(this, 'Tools', { config: this.config });
 
+    // Use case: deploy tool Lambdas + gateway targets + tool-scoped Cedar from a manifest.
+    if (ac.useCaseManifest) {
+      this.useCase = new UseCase(this, 'UseCase', {
+        manifestPath: ac.useCaseManifest,
+        gateway: this.gateway.gateway,
+        policyEngine: this.gateway.policyEngine,
+        gatewayRole: this.gateway.role,
+      });
+    }
+
     if (ac.enableObservability ?? true) {
       new Observability(this, 'Observability', { config: this.config });
     }
@@ -91,6 +103,10 @@ export class AgentPlatformStack extends PlatformStack {
     if (this.runtime) this.publish('agent-platform/runtime-arn', this.runtime.runtimeArn, 'AgentCore runtime ARN');
     this.publish('agent-platform/version', '0.2.0', 'AgentPlatform stack version');
 
-    applyAgentPlatformNagSuppressions(this, { hasInterceptor: !!this.interceptor, hasRuntime: !!this.runtime });
+    applyAgentPlatformNagSuppressions(this, {
+      hasInterceptor: !!this.interceptor,
+      hasRuntime: !!this.runtime,
+      useCaseTargets: this.useCase?.targetNames,
+    });
   }
 }

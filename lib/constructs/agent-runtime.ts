@@ -62,7 +62,14 @@ export class AgentRuntime extends Construct {
           'bedrock:ConverseStream',
           'bedrock:ApplyGuardrail',
         ],
-        resources: [`arn:${stack.partition}:bedrock:*::foundation-model/*`, `arn:${stack.partition}:bedrock:${stack.region}:${stack.account}:guardrail/*`],
+        resources: [
+          `arn:${stack.partition}:bedrock:*::foundation-model/*`,
+          // Cross-region inference profiles (e.g. us.anthropic.*) are account-scoped per region; the
+          // agent's configured MODEL_ID is a profile, so InvokeModel needs the profile ARN too.
+          `arn:${stack.partition}:bedrock:*:${stack.account}:inference-profile/*`,
+          `arn:${stack.partition}:bedrock:*:${stack.account}:application-inference-profile/*`,
+          `arn:${stack.partition}:bedrock:${stack.region}:${stack.account}:guardrail/*`,
+        ],
       }),
     );
     this.role.addToPolicy(

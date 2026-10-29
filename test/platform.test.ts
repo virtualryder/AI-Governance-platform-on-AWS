@@ -238,6 +238,17 @@ test('org foundation: proactive Guard Hook (WARN) over resource + stack ops', ()
   });
 });
 
+test('use case: tool targets + tool-scoped Cedar wired from the manifest', () => {
+  const t = agentPlatformTemplate((c) => {
+    c.agentcore.useCaseManifest = 'use-cases/citizen-311/manifest.yaml';
+  });
+  t.resourceCountIs('AWS::BedrockAgentCore::GatewayTarget', 1); // svc311 MCP lambda target
+  t.resourceCountIs('AWS::BedrockAgentCore::Policy', 2); // permit csr-agents + forbid submit
+  t.hasResourceProperties('AWS::BedrockAgentCore::GatewayTarget', {
+    TargetConfiguration: Match.objectLike({ Mcp: Match.objectLike({ Lambda: Match.anyValue() }) }),
+  });
+});
+
 test('per-user interceptor: ledger + REQUEST interceptor attached when enabled', () => {
   const t = agentPlatformTemplate((c) => {
     c.controls.perUserGovernance = { enabled: true, ratePerMinute: 60 };

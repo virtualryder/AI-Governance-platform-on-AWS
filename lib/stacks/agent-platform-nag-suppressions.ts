@@ -8,9 +8,21 @@ import { Stack } from 'aws-cdk-lib';
  */
 export function applyAgentPlatformNagSuppressions(
   stack: Stack,
-  opts: { hasInterceptor: boolean; hasRuntime: boolean },
+  opts: { hasInterceptor: boolean; hasRuntime: boolean; useCaseTargets?: string[] },
 ): void {
   const sid = stack.stackName;
+
+  for (const target of opts.useCaseTargets ?? []) {
+    NagSuppressions.addResourceSuppressionsByPath(stack, `${sid}/UseCase/Tool-${target}/Resource`, [
+      { id: 'AwsSolutions-L1', reason: 'Use-case tool Lambda pins a specific current Python runtime for reproducible builds.' },
+      { id: 'HIPAA.Security-LambdaConcurrency', reason: 'Gateway-invoked tool Lambda; concurrency scales with gateway traffic and is governed at the account level.' },
+      { id: 'HIPAA.Security-LambdaDLQ', reason: 'Gateway retries tool-interceptor failures (idempotent handler); a DLQ is not the retry path.' },
+      { id: 'HIPAA.Security-LambdaInsideVPC', reason: 'Tool Lambda reaches only AWS APIs for its domain logic; the platform baseline provisions no VPC (hardening option documented).' },
+    ]);
+    NagSuppressions.addResourceSuppressionsByPath(stack, `${sid}/UseCase/Tool-${target}/ServiceRole/Resource`, [
+      { id: 'AwsSolutions-IAM4', reason: 'AWSLambdaBasicExecutionRole attached by the CDK Lambda construct for CloudWatch Logs.' },
+    ]);
+  }
 
   if (opts.hasRuntime) {
     NagSuppressions.addResourceSuppressionsByPath(stack, `${sid}/Runtime/Role/DefaultPolicy/Resource`, [

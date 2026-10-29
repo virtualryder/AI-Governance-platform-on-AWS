@@ -131,6 +131,10 @@ export interface PlatformConfig {
     /** ECR image URI for the AgentCore Runtime. Runtime/RuntimeEndpoint are only created when set
      * (the image is produced by the use-case harness, step 6). */
     runtimeImageUri?: string;
+    /** Repo-relative path to a use-case manifest (use-cases/<name>/manifest.yaml). When set, the
+     * use-case tool Lambdas, gateway targets (MCP tool schema), and tool-scoped Cedar policies are
+     * deployed onto the gateway/engine. */
+    useCaseManifest?: string;
     /** Enable CloudWatch Transaction Search (AgentCore Observability). Defaults to true. */
     enableObservability?: boolean;
     /** Percentage of spans indexed from CloudWatch Logs to X-Ray (cost control). Defaults to 5. */

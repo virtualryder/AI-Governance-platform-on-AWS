@@ -38,6 +38,10 @@ export class UseCase extends Construct {
   readonly consequentialTool?: string;
   /** ARN of the tool Lambda hosting the consequential action — the HITL executor's wired target. */
   readonly consequentialTargetArn?: string;
+  /** Runtime model id from the manifest (passed to the runtime as MODEL_ID). */
+  readonly runtimeModelId?: string;
+  /** System prompt compiled from the manifest workflow (passed to the runtime as SYSTEM_PROMPT). */
+  readonly systemPrompt?: string;
 
   constructor(scope: Construct, id: string, props: UseCaseProps) {
     super(scope, id);
@@ -124,6 +128,22 @@ export class UseCase extends Construct {
     if (consequential && toolToTarget[consequential]) {
       this.consequentialTool = consequential;
       this.consequentialTargetArn = targetToFn[toolToTarget[consequential]]?.functionArn;
+    }
+
+    // Compile the runtime model + system prompt from the manifest so the Runtime is wired to the SAME
+    // source of truth as the tools and policies (F16: one compiler, not drift between render.py and CDK).
+    this.runtimeModelId = manifest.model?.runtime_model_id;
+    const wf = manifest.workflow;
+    if (wf?.steps) {
+      const steps = (wf.steps as string[]).map((s, i) => `${i + 1}. ${s}`).join('\n');
+      this.systemPrompt =
+        `You are the ${manifest.agent.title} agent. Run this governed workflow end to end:\n${steps}\n\n` +
+        (consequential
+          ? `You must NEVER perform the consequential action "${consequential}" directly. When the ` +
+            'workflow reaches it, call request_human_signoff with the required fields and STOP — a human ' +
+            'approver files it through the sign-off gate. '
+          : '') +
+        'Use only the governed tools available to you at the gateway.';
     }
   }
 }

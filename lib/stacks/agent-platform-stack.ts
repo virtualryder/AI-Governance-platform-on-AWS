@@ -110,6 +110,9 @@ export class AgentPlatformStack extends PlatformStack {
           GATEWAY_URL: this.gateway.gatewayUrl,
           ...(this.memory ? { MEMORY_ID: this.memory.memoryId } : {}),
           WORKLOAD_IDENTITY_ARN: workloadIdentity.attrWorkloadIdentityArn,
+          // Model + system prompt compiled from the use-case manifest (single source of truth, F16).
+          ...(this.useCase?.runtimeModelId ? { MODEL_ID: this.useCase.runtimeModelId } : {}),
+          ...(this.useCase?.systemPrompt ? { SYSTEM_PROMPT: this.useCase.systemPrompt } : {}),
           ...guardrailEnv,
           ...hitlEnv,
         },

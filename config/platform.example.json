@@ -4,7 +4,14 @@
   "region": "us-east-1",
   "dataClassification": "confidential",
   "costCenter": "ai-platform",
-  "hub": { "accountId": "111111111111" },
+  "hub": {
+    "accountId": "111111111111",
+    "organizationId": "o-exampleorg1",
+    "oamSinkArn": "arn:aws:oam:us-east-1:111111111111:sink/govai-example-sink",
+    "logArchiveBucketArn": "arn:aws:s3:::govai-example-log-archive",
+    "logArchiveKmsKeyArn": "arn:aws:kms:us-east-1:111111111111:key/00000000-0000-0000-0000-000000000000",
+    "monitoredAccountIds": ["333333333333"]
+  },
   "org": {
     "managementAccountId": "222222222222",
     "organizationId": "o-exampleorg1",

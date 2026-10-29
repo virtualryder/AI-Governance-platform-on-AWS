@@ -27,9 +27,17 @@ export class GovernanceBaselineStack extends PlatformStack {
       purpose: 'evidence',
     });
 
+    // Spoke → hub evidence delivery (Gate 3): replicate to the hub archive when configured.
+    const hub = this.config.hub;
+    const replicateTo =
+      hub?.logArchiveBucketArn && hub.accountId
+        ? { bucketArn: hub.logArchiveBucketArn, kmsKeyArn: hub.logArchiveKmsKeyArn, accountId: hub.accountId }
+        : undefined;
+
     this.evidenceBucket = new EvidenceBucket(this, 'Evidence', {
       config: this.config,
       encryptionKey: this.evidenceKey.key,
+      replicateTo,
     });
 
     this.auditTrail = new AuditTrail(this, 'Audit', {

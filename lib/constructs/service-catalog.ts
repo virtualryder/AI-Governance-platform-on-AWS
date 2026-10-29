@@ -60,5 +60,12 @@ export class PlatformCatalog extends Construct {
       ],
     });
     this.portfolio.addProduct(this.product);
+
+    // Gate 3: share the portfolio to the monitored spoke accounts so their teams can self-service the
+    // governed products. The consuming account still associates its own IAM principal to launch
+    // (cross-account principal association is a consumer-side step — see the runbook).
+    for (const accountId of config.hub?.monitoredAccountIds ?? []) {
+      this.portfolio.shareWithAccount(accountId);
+    }
   }
 }

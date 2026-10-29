@@ -32,7 +32,12 @@ export class GovernanceHubStack extends PlatformStack {
       this.logArchive = new EvidenceBucket(this, 'LogArchive', {
         config: this.config,
         encryptionKey: key.key,
+        // Accept inbound evidence replication from the monitored spoke accounts (Gate 3).
+        allowReplicationFromAccounts: this.config.hub?.monitoredAccountIds,
       });
+      // Publish the archive ARNs so spokes can be configured to replicate to them.
+      this.publish('hub/log-archive-bucket-arn', this.logArchive.bucket.bucketArn, 'Central log archive bucket ARN');
+      this.publish('hub/log-archive-kms-arn', key.key.keyArn, 'Central log archive CMK ARN');
       this.oamSink = new OamSink(this, 'Oam', { config: this.config });
       this.catalog = new PlatformCatalog(this, 'Catalog', { config: this.config });
       this.registry = new AgentRegistry(this, 'Registry', { config: this.config });

@@ -15,7 +15,7 @@ synth/nag/unit-verified locally; items needing multi-account or live AWS validat
 | F04 | Registry reads a nonexistent response field | ✅ | Uses `registryArn` (CreateRegistry's real field); DeleteRegistry takes the ARN; grounded against the API ref |
 | F05 | HITL is a detached primitive | ✅ | End-to-end: agent `request_human_signoff` → state machine (propose/approve/reject/timeout) → **exactly-once** executor (separate role) → audit ledger; replay-guarded |
 | F06 | Kill-switch release reports success without removing the deny | ✅ | Reads `policies` (not `items`), paginates, validates an explicit action enum, and verifies the policy is gone before flipping to `normal` |
-| F07 | Hub/spoke connectivity is mostly intent | 🟡 | Relabelled **partial**; OAM sink now org-scoped (no open sink). OAM links, evidence delivery, catalog/registry sharing remain (Gate 3) |
+| F07 | Hub/spoke connectivity is mostly intent | 🟡→built | OAM sink org-scoped; **now built (Gate 3): spoke `AWS::Oam::Link` to the hub sink, cross-account S3 evidence replication (spoke→hub archive, with replication role + hub inbound bucket/KMS policy), Service Catalog portfolio shares, and per-spoke dashboard widgets.** Synth/nag/test-verified; **not yet live-validated across two accounts** (needs a hub+spoke in one Org) |
 | F08 | Human identity setup missing from the reproducible path | ✅ | `identity.humanAuth` provisions groups + a human app client; `scripts/create-human-user.sh`; audit identity derived from the verified JWT subject |
 | F09 | Model allowlist broad/ineffective | ✅ | Interceptor gates only on an exact model-id key (opt-in), exact match, explicit unmapped-group handling; runtime IAM scoped to `allowedModelIds` |
 | F10 | Multi-agent not implemented in the harness | 🟡 | Relabelled **IAM scaffolding, not orchestration** in README/CONTROLS; harness orchestration tracked (Gate 5) |
@@ -69,8 +69,13 @@ the full citizen-311 workflow end to end. All acceptance scenarios passed:
 
 - **Gate 2 (standalone):** ✅ validated live (above). Fixes committed; re-validation reproducible from a
   clean checkout following `docs/runbooks/DEPLOYMENT.md` §12b.
-- **Gate 3 (hub/spoke):** OAM links, cross-account evidence delivery with KMS grants, registry/catalog
-  consumer access; validate from two real accounts.
+- **Gate 3 (hub/spoke):** integration **built** — spoke OAM link, cross-account evidence replication
+  (+ hub inbound bucket/KMS policy), catalog portfolio shares, per-spoke dashboard widgets, config
+  fields (`hub.oamSinkArn` / `logArchiveBucketArn` / `logArchiveKmsKeyArn` / `monitoredAccountIds`).
+  Synth/nag/test-verified. **Still required to CLOSE the gate:** live validation across two real
+  accounts in one Organization — a real workload trace + retained evidence reaching the hub, and
+  denied cross-account access. Blocked here on having only one account; reproduce per runbook once a
+  second account/Org exists. Registry async-readiness polling (GetRegistry) also remains a follow-up.
 - **Gate 4 (org):** deploy into a test OU; prove governed inference/upgrades/incident controls work
   while SCPs are active; fix SCP principal alignment; management-account-owned floor guardrail.
 - **Gate 5 (optional):** implement/test A2A orchestration, Omni live telemetry, private networking.

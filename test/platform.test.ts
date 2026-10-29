@@ -484,3 +484,44 @@ test('per-user interceptor: ledger + REQUEST interceptor attached when enabled',
     ]),
   });
 });
+
+// ---- Gate 3: connected hub/spoke integration (synth/nag/test-verified; not yet live-validated) ----
+
+test('gate3 spoke: OAM link to the hub sink when hub.oamSinkArn is set (F07)', () => {
+  const t = controlsTemplate(); // example config sets hub.oamSinkArn
+  t.hasResourceProperties('AWS::Oam::Link', {
+    SinkIdentifier: 'arn:aws:oam:us-east-1:111111111111:sink/govai-example-sink',
+    ResourceTypes: Match.arrayWith(['AWS::CloudWatch::Metric', 'AWS::Logs::LogGroup', 'AWS::XRay::Trace']),
+  });
+});
+
+test('gate3 spoke: evidence bucket replicates to the hub archive when configured (F07)', () => {
+  const t = Template.fromStack(
+    new GovernanceBaselineStack(new App(), 'BREP', { config, mode: 'spoke', env: { region: config.region } }),
+  );
+  t.hasResourceProperties('AWS::S3::Bucket', {
+    ReplicationConfiguration: Match.objectLike({
+      Rules: Match.arrayWith([
+        Match.objectLike({
+          Destination: Match.objectLike({ Bucket: 'arn:aws:s3:::govai-example-log-archive', Account: '111111111111' }),
+        }),
+      ]),
+    }),
+  });
+  // A replication role with a deterministic name the hub can allow-list.
+  t.hasResourceProperties('AWS::IAM::Role', { RoleName: Match.stringLikeRegexp('evidence-replication$') });
+});
+
+test('gate3 hub: archive accepts inbound replication + portfolio shared + spoke dashboard widget (F07)', () => {
+  const t = Template.fromStack(
+    new GovernanceHubStack(new App(), 'HUBG3', { config, mode: 'hub', env: { region: config.region } }),
+  );
+  // Portfolio shared to the monitored spoke account.
+  t.hasResourceProperties('AWS::ServiceCatalog::PortfolioShare', { AccountId: '333333333333' });
+  // Hub archive bucket policy admits the spoke replication role.
+  const policies = t.findResources('AWS::S3::BucketPolicy');
+  expect(JSON.stringify(policies)).toContain('AllowSpokeEvidenceReplication');
+  // Dashboard carries a per-spoke-account widget.
+  const dash = t.findResources('AWS::CloudWatch::Dashboard');
+  expect(JSON.stringify(dash)).toContain('333333333333');
+});

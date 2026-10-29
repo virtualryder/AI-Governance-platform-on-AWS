@@ -6,6 +6,7 @@ import { KillSwitch } from '../constructs/kill-switch';
 import { PlatformBudget } from '../constructs/budgets';
 import { HumanInTheLoop } from '../constructs/hitl';
 import { DetectiveRules } from '../constructs/detective-rules';
+import { ObservabilityLink } from '../constructs/observability-link';
 import { applyControlsNagSuppressions } from './controls-nag-suppressions';
 
 /**
@@ -19,6 +20,7 @@ export class ControlsStack extends PlatformStack {
   readonly budget: PlatformBudget;
   readonly hitl?: HumanInTheLoop;
   readonly detective?: DetectiveRules;
+  readonly observabilityLink?: ObservabilityLink;
 
   constructor(scope: Construct, id: string, props: PlatformStackProps) {
     super(scope, id, props);
@@ -48,6 +50,14 @@ export class ControlsStack extends PlatformStack {
 
     if (this.config.controls.detectiveConfigRules) {
       this.detective = new DetectiveRules(this, 'Detective', { config: this.config });
+    }
+
+    // Gate 3: spoke shares telemetry into the hub's OAM sink (when a remote hub sink is configured).
+    if (this.config.hub?.oamSinkArn) {
+      this.observabilityLink = new ObservabilityLink(this, 'ObservabilityLink', {
+        config: this.config,
+        sinkArn: this.config.hub.oamSinkArn,
+      });
     }
 
     if (this.killSwitch) {

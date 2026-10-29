@@ -89,7 +89,20 @@ export interface PlatformConfig {
   partition?: Partition;
   dataClassification: DataClassification;
   costCenter: string;
-  hub?: { accountId: string; organizationId?: string };
+  /** Governance hub wiring. In `hub` mode this account IS the hub; in `spoke`/`standalone` these
+   * point at the hub so the spoke can connect to it (Gate 3 cross-account integration). */
+  hub?: {
+    accountId: string;
+    organizationId?: string;
+    /** Hub OAM sink ARN — a spoke creates an `AWS::Oam::Link` to it to share metrics/logs/traces. */
+    oamSinkArn?: string;
+    /** Hub central WORM log-archive bucket ARN — a spoke replicates its evidence here. */
+    logArchiveBucketArn?: string;
+    /** CMK ARN encrypting the hub log archive — the spoke replication role encrypts replicas with it. */
+    logArchiveKmsKeyArn?: string;
+    /** Workload/spoke account IDs the hub observes (dashboard account selection + replication sources). */
+    monitoredAccountIds?: string[];
+  };
   /** Org-mode foundation. When controlTower is present, ship via CfCT + service-managed
    * StackSets; otherwise plain self-managed StackSets. 'auto' detects at deploy time. */
   org?: {

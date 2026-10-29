@@ -25,7 +25,8 @@ This runbook is the single source of truth for a deployment. The per-mode files 
 | Runtime | ARM64 agent harness + image build script | Building/scanning/publishing the image to ECR; the model + system prompt via the manifest |
 | Governance | guardrail, Cedar enforce, kill switch, HITL, interceptor, logging | Approved guardrail content, forbidden tools, approver identities, incident ownership |
 | Evidence | CloudTrail + invocation logs + WORM bucket + HITL ledger | Retention policy, evidence export, legal hold, access review |
-| **Explicit exclusions (today)** | — | hub/spoke evidence pipeline, org live enforcement, A2A orchestration, private-VPC networking, prod cost model |
+| **Built but not yet live-validated** | hub/spoke cross-account integration (OAM links, evidence replication, catalog shares) — see §12c | validate across two real accounts in one Org before relying on it |
+| **Explicit exclusions (today)** | — | org live enforcement, A2A orchestration, private-VPC networking, prod cost model |
 
 ---
 
@@ -344,6 +345,47 @@ npx cdk deploy --all -c mode=standalone -c configFile=config/<customer>.json --p
   invocation-logging config in the account survives deploy **and** teardown.
 
 ---
+
+## 12c. Hub/spoke connected deployment (two accounts) — built, not yet live-validated
+
+Deliver spoke telemetry + evidence to a central hub. **Status:** the integration is implemented and
+synth/nag/test-verified but has NOT been validated across two real accounts; treat this as a guided
+first live validation, not a proven path. Requires a **hub account** and ≥1 **spoke account** in the
+**same AWS Organization**.
+
+**Order:** deploy the hub first, read its outputs, configure the spoke to point at them, deploy the spoke.
+
+1. **Hub** (`-c mode=hub`): set `hub.organizationId` and `hub.monitoredAccountIds` (the spoke account
+   ids). Deploy, then read the producer outputs:
+   ```bash
+   aws ssm get-parameters --region <r> --profile <hub> --names \
+     /governed-ai/<customer>/<env>/hub/oam-sink-arn \
+     /governed-ai/<customer>/<env>/hub/log-archive-bucket-arn \
+     /governed-ai/<customer>/<env>/hub/log-archive-kms-arn \
+     --query 'Parameters[].[Name,Value]' --output text
+   ```
+2. **Spoke** (`-c mode=spoke`): set in the spoke config —
+   - `hub.accountId` = the hub account id,
+   - `hub.oamSinkArn` = the hub OAM sink ARN (spoke creates an `AWS::Oam::Link`),
+   - `hub.logArchiveBucketArn` + `hub.logArchiveKmsKeyArn` = the hub archive (spoke replicates evidence).
+   Deploy the spoke. It creates the OAM link and an evidence-replication role
+   `govai-<customer>-<env>-evidence-replication` (the hub archive already allow-lists this role name
+   for the monitored accounts).
+3. **Consumer-side steps the hub cannot do for the spoke:** associate an IAM principal in the spoke to
+   the shared Service Catalog portfolio (`aws servicecatalog associate-principal-with-portfolio`); and
+   accept the RAM share for the Agent Registry if your Org doesn't auto-accept.
+
+**Verify (both accounts):**
+- Spoke: `aws oam list-attached-links` shows the link `ACTIVE`; the evidence bucket has a replication
+  configuration pointing at the hub archive.
+- Hub: after spoke activity, the governance dashboard's per-spoke widget shows metrics; replicated
+  evidence objects appear in the hub archive under the spoke's account.
+- **Negative:** an account NOT in `monitoredAccountIds` / not in the Org cannot link to the sink or
+  replicate (the sink policy is `aws:PrincipalOrgID`-scoped; the archive policy allow-lists specific
+  accounts + the replication-role name).
+
+**Known follow-ups:** cross-account KMS + Object-Lock replication is intricate — confirm replicas land
+and are readable by the hub; the Agent Registry create does not yet poll `GetRegistry` for readiness.
 
 ## 13. Operations
 

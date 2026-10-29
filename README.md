@@ -87,7 +87,7 @@ controls that were provisioned but not wired end to end; those critical defects 
 | citizen-311 governed workflow | **Live-validated** (post-fix) | full workflow run in-account: authorized/denied/approved/kill-switch all pass — see `docs/REMEDIATION.md` Gate 2 |
 | Kill switch / guardrail enforcement / interceptor | **Live-tested + unit-tested** | engage→block→release→restore verified live; behavioral pytest for kill-switch + interceptor + HITL executor + logging ownership |
 | Human identity (Cognito groups + human client) | **Integrated** | provisioned; user creation is a scripted operational step |
-| Hub / spoke cross-account integration | **Partial** | sink + registry exist; **OAM links, evidence delivery, catalog/registry sharing are not complete** |
+| Hub / spoke cross-account integration | **Built, not live-validated** | spoke OAM link, cross-account evidence replication (+ hub inbound policy), catalog shares, per-spoke dashboard widgets — synth/nag/test-verified; needs two real accounts in one Org to close (Gate 3) |
 | Org enforcement (SCPs, StackSet, budget→SCP) | **Synth/nag-tested only** | needs a test OU; **SCP principal alignment + guardrail ownership need live validation** |
 | Multi-agent A2A | **IAM scaffolding only** | the Python harness does not yet orchestrate collaborators — not functioning multi-agent |
 | CloudWatch Omni Space | **Synth-tested** | needs a real Omni domain + live telemetry validation |
@@ -97,7 +97,9 @@ synth/unit-verified) · *partial* (some pieces missing) · *synth/nag-tested onl
 
 **Hardening plan (gated):** (1) truthful scope + safe defaults ✅; (2) **standalone reference** —
 critical wiring closed and **validated live in a real account** (2026-10-29) ✅; (3) connected
-hub/spoke *(next)*; (4) org enforcement in a test OU; (5) optional A2A / Omni / private networking as
+hub/spoke — **integration built** (OAM links, evidence replication, catalog shares); cross-account
+live-validation pending (needs two accounts in one Org); (4) org enforcement in a test OU; (5)
+optional A2A / Omni / private networking as
 separate profiles. See `docs/REMEDIATION.md` for the findings-to-fixes map + Gate-2 evidence and
 `docs/CONTROLS.md` for per-control status.
 

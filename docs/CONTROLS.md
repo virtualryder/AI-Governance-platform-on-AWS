@@ -11,8 +11,10 @@ Legend — Modes: **S**=standalone · **P**=spoke · **H**=hub · **O**=org.
 > default; the guardrail is attached to the runtime and pinned in the harness; HITL is a complete
 > approve→exactly-once-execute→audit workflow; the kill-switch release verifies the deny is removed;
 > the model allowlist is exact; invocation logging preserves existing account config; human identity +
-> observability prerequisites are wired). **Hub/spoke integration is partial, org enforcement is
-> synth-tested only, and multi-agent A2A is IAM scaffolding — not functioning orchestration.** The
+> observability prerequisites are wired). **Hub/spoke cross-account integration is now built (OAM
+> links, evidence replication, catalog shares, per-spoke dashboard widgets) but not yet live-validated
+> across two accounts; org enforcement is synth-tested only; and multi-agent A2A is IAM scaffolding —
+> not functioning orchestration.** The
 > "deployed+verified on AWS" notes below predate the fixes and need re-validation from a clean checkout.
 > See [`REMEDIATION.md`](REMEDIATION.md) for the finding-by-finding status.
 

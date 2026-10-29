@@ -65,6 +65,26 @@ export class GovernanceDashboard extends Construct {
       ],
     };
 
+    // Gate 3: cross-account widgets — one guardrail-intervention widget per monitored spoke account
+    // (the OAM links share those accounts' metrics into this hub, so `accountId` selects them).
+    const monitored = config.hub?.monitoredAccountIds ?? [];
+    monitored.forEach((accountId, i) => {
+      body.widgets.push({
+        type: 'metric',
+        x: (i % 2) * 12,
+        y: 8 + Math.floor(i / 2) * 6,
+        width: 12,
+        height: 6,
+        properties: {
+          title: `Spoke ${accountId}: guardrail interventions`,
+          region: config.region,
+          stat: 'Sum',
+          // accountId resolves via the OAM sink/link cross-account observability.
+          metrics: [['AWS/Bedrock/Guardrails', 'InvocationsIntervened', { accountId }]],
+        },
+      } as (typeof body.widgets)[number]);
+    });
+
     this.dashboard = new cloudwatch.CfnDashboard(this, 'Dashboard', {
       dashboardName: `governed-ai-${config.customerName}-${config.environment}`,
       dashboardBody: JSON.stringify(body),

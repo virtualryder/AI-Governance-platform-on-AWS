@@ -120,6 +120,17 @@ test('agent platform: memory CMK-encrypted', () => {
   });
 });
 
+test('agent platform: human sign-in flow creates the entitlement group + a human app client (F08)', () => {
+  const t = agentPlatformTemplate(); // example config enables identity.humanAuth with csr-agents
+  t.hasResourceProperties('AWS::Cognito::UserPoolGroup', { GroupName: 'csr-agents' });
+  // Two app clients: the M2M machine client and the human (user-facing) client.
+  t.resourceCountIs('AWS::Cognito::UserPoolClient', 2);
+  const clients = t.findResources('AWS::Cognito::UserPoolClient');
+  const human = Object.values(clients).find((c: any) => c.Properties.ClientName === 'agentcore-human') as any;
+  expect(human).toBeDefined();
+  expect(human.Properties.GenerateSecret).toBeFalsy(); // public client for authorization-code/PKCE
+});
+
 test('config: LOG_ONLY Cedar is rejected unless explicitly acknowledged (F01)', () => {
   const base = loadConfig('config/platform.example.json');
   const logOnly = JSON.parse(JSON.stringify(base)) as PlatformConfig;

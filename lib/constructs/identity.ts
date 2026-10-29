@@ -25,6 +25,8 @@ export class InboundIdentity extends Construct {
   readonly allowedClients: string[];
   readonly userPool?: cognito.UserPool;
   readonly userPoolClient?: cognito.UserPoolClient;
+  /** Human (user-facing) app client, when `identity.humanAuth` is enabled. */
+  readonly humanClient?: cognito.UserPoolClient;
 
   constructor(scope: Construct, id: string, props: InboundIdentityProps) {
     super(scope, id);
@@ -92,5 +94,34 @@ export class InboundIdentity extends Construct {
     this.issuer = `https://cognito-idp.${stack.region}.amazonaws.com/${this.userPool.userPoolId}`;
     this.discoveryUrl = `${this.issuer}/.well-known/openid-configuration`;
     this.allowedClients = [this.userPoolClient.userPoolClientId];
+
+    // Human sign-in flow: a user-facing app client + the Cognito groups the use-case Cedar policies
+    // key on. Without this, only the M2M client exists and no person can obtain a JWT carrying
+    // `cognito:groups`, so the governed workflow is unreachable by a human (F08). Users are added to
+    // groups out-of-band (scripts/create-human-user.sh) — IaC does not bake in user credentials.
+    const humanAuth = identity.humanAuth;
+    if (humanAuth?.enabled) {
+      for (const group of humanAuth.groups) {
+        new cognito.CfnUserPoolGroup(this, `Group${group.replace(/[^a-zA-Z0-9]/g, '')}`, {
+          userPoolId: this.userPool.userPoolId,
+          groupName: group,
+          description: `Governed-AI human entitlement group: ${group}`,
+        });
+      }
+
+      this.humanClient = this.userPool.addClient('HumanClient', {
+        userPoolClientName: 'agentcore-human',
+        generateSecret: false, // public client for the authorization-code (PKCE) sign-in flow
+        accessTokenValidity: Duration.minutes(config.agentcore.accessTokenValidityMinutes),
+        idTokenValidity: Duration.minutes(config.agentcore.accessTokenValidityMinutes),
+        authFlows: { userPassword: humanAuth.enableUserPasswordAuth ?? false, userSrp: true },
+        oAuth: {
+          flows: { authorizationCodeGrant: true },
+          scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.resourceServer(resourceServer, invokeScope)],
+          callbackUrls: humanAuth.callbackUrls ?? ['https://localhost/callback'],
+        },
+      });
+      this.allowedClients.push(this.humanClient.userPoolClientId);
+    }
   }
 }

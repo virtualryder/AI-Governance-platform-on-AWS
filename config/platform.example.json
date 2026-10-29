@@ -27,6 +27,16 @@
       "enforceAccountLevel": true
     }
   },
+  "identity": {
+    "provider": "cognito",
+    "mode": "brokered",
+    "humanAuth": {
+      "enabled": true,
+      "groups": ["csr-agents"],
+      "callbackUrls": ["https://localhost/callback"],
+      "enableUserPasswordAuth": true
+    }
+  },
   "agentcore": {
     "enableBrowser": true,
     "enableMemory": true,

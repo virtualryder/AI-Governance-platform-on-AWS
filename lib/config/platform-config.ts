@@ -122,6 +122,20 @@ export interface PlatformConfig {
     mode?: 'brokered' | 'direct';
     issuerUrl?: string;
     allowedClients?: string[];
+    /** Human sign-in flow (brokered Cognito only). Without this, only the machine (client-credentials)
+     * client exists and no human can obtain a JWT carrying the `cognito:groups` the use-case Cedar
+     * policies require — so the governed workflow is not reachable by a person. */
+    humanAuth?: {
+      enabled: boolean;
+      /** Cognito groups to create in the pool (must include the use-case reviewer group, e.g.
+       * 'csr-agents'). Users are added to these groups out-of-band (see the runbook helper script). */
+      groups: string[];
+      /** OAuth redirect URLs for the authorization-code (console/SSO) flow. */
+      callbackUrls?: string[];
+      /** Enable USER_PASSWORD_AUTH so an operator can fetch a test token via the CLI (see runbook).
+       * Keep false in prod and rely on the authorization-code flow. Defaults to false. */
+      enableUserPasswordAuth?: boolean;
+    };
   };
   governance: {
     logRetentionDays: number;

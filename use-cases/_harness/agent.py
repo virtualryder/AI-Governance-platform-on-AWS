@@ -5,6 +5,8 @@ Reusable across agents: the workflow prompt, model, and gateway discovery all co
 is the bearer for every governed Gateway (MCP) tool call, so Cedar evaluates the real human principal.
 The agent never commits the consequential action; it requests human sign-off (separation of duties).
 """
+import base64
+import json
 import os
 import logging
 import boto3
@@ -49,19 +51,41 @@ def _gateway_url():
     return GATEWAY_URL_ENV
 
 
+def _identity_from_token(token):
+    """Derive the audit identity from the verified JWT claims — NOT from caller-supplied payload
+    labels (which are untrusted). Returns (subject, display) from sub / email / username claims."""
+    parts = (token or "").split(".")
+    if len(parts) < 2:
+        return "", ""
+    pad = parts[1] + "=" * (-len(parts[1]) % 4)
+    try:
+        claims = json.loads(base64.urlsafe_b64decode(pad))
+    except Exception:
+        return "", ""
+    subject = claims.get("sub", "")
+    display = claims.get("email") or claims.get("cognito:username") or claims.get("username") or subject
+    return subject, display
+
+
 @app.entrypoint
 def invoke(payload, context=None):
     p = payload or {}
     token = p.get("access_token") or ""
-    requester = p.get("requester", "reviewer")
     case_id = p.get("case_id") or p.get("icsr_id") or "CASE-0001"
+    if not token:
+        return {"error": "no access_token provided; a human identity is required to drive governed tools"}
+
+    # Audit identity comes from the token, not the payload. A caller-supplied "requester" is only a
+    # display hint and must never override the authenticated subject for audit/attribution.
+    subject, display = _identity_from_token(token)
+    if not subject:
+        return {"error": "access_token is not a decodable JWT; a verified human identity is required"}
+    requester = display
     prompt = p.get("prompt") or (
         "Process the intake for case %s (requester %s). Run the governed workflow end to end and "
         "request human sign-off with the case id and requester." % (case_id, requester)
     )
-    log.info("invocation requester=%s case_id=%s token_present=%s", requester, case_id, bool(token))
-    if not token:
-        return {"error": "no access_token provided; a human identity is required to drive governed tools"}
+    log.info("invocation subject=%s requester=%s case_id=%s token_present=%s", subject, requester, case_id, bool(token))
 
     gw = _gateway_url()
     if not gw:

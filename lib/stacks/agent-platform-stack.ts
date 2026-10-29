@@ -124,6 +124,12 @@ export class AgentPlatformStack extends PlatformStack {
     this.publish('agent-platform/policy-engine-arn', this.gateway.policyEngine.attrPolicyEngineArn, 'Cedar policy engine ARN');
     this.publish('agent-platform/workload-identity-arn', workloadIdentity.attrWorkloadIdentityArn, 'Agent workload identity ARN');
     this.publish('agent-platform/idp-discovery-url', this.identity.discoveryUrl, 'Inbound IdP OIDC discovery URL');
+    if (this.identity.userPool) {
+      this.publish('agent-platform/user-pool-id', this.identity.userPool.userPoolId, 'Cognito user pool id (human provisioning)');
+    }
+    if (this.identity.humanClient) {
+      this.publish('agent-platform/human-client-id', this.identity.humanClient.userPoolClientId, 'Human (user-facing) app client id');
+    }
     if (this.memory) this.publish('agent-platform/memory-id', this.memory.memoryId, 'AgentCore memory ID');
     if (this.interceptor) {
       this.publish('agent-platform/interceptor-ledger', this.interceptor.ledger.tableName, 'Per-user governance ledger table');

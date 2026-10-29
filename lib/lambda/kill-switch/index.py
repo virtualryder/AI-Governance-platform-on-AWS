@@ -15,6 +15,8 @@ Contract notes (grounded against AWS docs, 2026-10-29):
   never fall through to release (which would silently clear the deny).
 """
 import os
+import time
+
 import boto3
 
 ssm = boto3.client("ssm")
@@ -35,14 +37,16 @@ def _set_flag(state):
 
 
 def _iter_policies(engine_id):
-    """Yield every policy on the engine, following pagination."""
+    """Yield every policy summary on the engine, following pagination.
+
+    Uses ListPolicySummaries (metadata only) — it does NOT decrypt customer content, so it needs no
+    access to the policy-engine KMS key, unlike ListPolicies which fails with a KMS AccessDenied."""
     token = None
     while True:
         kwargs = {"policyEngineId": engine_id}
         if token:
             kwargs["nextToken"] = token
-        resp = acc.list_policies(**kwargs)
-        # AWS returns the list under `policies`; tolerate `items` only as a defensive fallback.
+        resp = acc.list_policy_summaries(**kwargs)
         for policy in resp.get("policies", resp.get("items", [])):
             yield policy
         token = resp.get("nextToken")
@@ -70,28 +74,55 @@ def handler(event, _context):
 
     if action == "engage":
         statement = f'forbid(principal, action, resource == AgentCore::Gateway::"{gateway_arn}");'
+        base = dict(
+            policyEngineId=engine_id,
+            name=KILL_NAME,
+            description="Kill switch: forbid all tool calls on this gateway.",
+            definition={"cedar": {"statement": statement}},
+            # A blanket forbid trips AgentCore's automated-reasoning findings and would CREATE_FAILED
+            # under default validation; IGNORE_ALL_FINDINGS lets this restrictive forbid be created
+            # (same as the use-case tool-scoped policies).
+            validationMode="IGNORE_ALL_FINDINGS",
+        )
         try:
-            acc.create_policy(
-                policyEngineId=engine_id,
-                name=KILL_NAME,
-                description="Kill switch: forbid all tool calls on this gateway.",
-                definition={"cedar": {"statement": statement}},
-                enforcementMode="ACTIVE",
-            )
+            # ACTIVE = the policy blocks (not just logs). Some bundled SDKs predate this parameter;
+            # fall back to the default if the client rejects it (the engine still enforces ACTIVE policies).
+            try:
+                acc.create_policy(enforcementMode="ACTIVE", **base)
+            except Exception as exc:
+                if "enforcementMode" in str(exc):
+                    acc.create_policy(**base)
+                else:
+                    raise
         except acc.exceptions.ConflictException:
             pass  # already engaged
         _set_flag("engaged")
-        return {"status": "engaged", "gateway": gateway_arn}
+        # CreatePolicy is ASYNCHRONOUS — poll the summary until the policy leaves CREATING so the
+        # caller knows the forbid is live (gateway evaluation may still take additional seconds to
+        # reflect it, which is the documented propagation latency for an incident control).
+        status = mode = None
+        for _ in range(20):
+            p = next((p for p in _iter_policies(engine_id) if p.get("name") == KILL_NAME), None)
+            if p:
+                status, mode = p.get("status"), p.get("enforcementMode")
+                if status and status != "CREATING":
+                    break
+            time.sleep(3)
+        return {"status": "engaged", "gateway": gateway_arn, "enforcementMode": mode, "policyStatus": status}
 
-    # release — delete every kill policy, then VERIFY none remain before flipping the flag.
-    deleted = []
-    for policy_id in _kill_policy_ids(engine_id):
+    # release — delete every kill policy, then POLL until none remain (DeletePolicy is asynchronous)
+    # before flipping the flag. Never report released while a forbid policy is still attached.
+    deleted = _kill_policy_ids(engine_id)
+    for policy_id in deleted:
         acc.delete_policy(policyEngineId=engine_id, policyId=policy_id)
-        deleted.append(policy_id)
 
-    remaining = _kill_policy_ids(engine_id)
+    remaining = deleted
+    for _ in range(20):
+        remaining = _kill_policy_ids(engine_id)
+        if not remaining:
+            break
+        time.sleep(3)
     if remaining:
-        # Still attached — do NOT report released or flip SSM to normal.
         raise RuntimeError(
             f"Kill-switch release failed: {len(remaining)} forbid policy(ies) still attached "
             f"({remaining}); leaving state=engaged."

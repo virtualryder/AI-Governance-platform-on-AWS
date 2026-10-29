@@ -34,11 +34,41 @@ synth/nag/unit-verified locally; items needing multi-account or live AWS validat
   pinned + deny attached on the runtime, human client + group, HITL approvals ledger + executor +
   `states:StartExecution`, kill-switch gating.
 
+## Gate 2 — standalone, validated live (2026-10-29)
+
+Re-deployed standalone to a real account (`864217980669`, us-east-1) from the post-fix source and ran
+the full citizen-311 workflow end to end. All acceptance scenarios passed:
+
+| Scenario | Result |
+|---|---|
+| Authorized human (`csr-alice` ∈ `csr-agents`) + allowed tools | ✅ 4 governed tools listed; workflow ran |
+| Consequential action (`submit_service_request`) | ✅ absent from the agent's tools (Cedar forbid); agent called `request_human_signoff` instead |
+| Guardrail-governed inference | ✅ inference ran with the pinned guardrail; the ungoverned-inference deny did not block |
+| Unauthorized identity (`viewer-bob`, no group) | ✅ `ACCESS DENIED`, zero tools (deny-by-default) |
+| HITL approve → execute | ✅ executor filed the request exactly once (`SR-DEMO-0001`); ledger recorded actor=`csr-alice` sub, approver=`supervisor-sam` |
+| HITL replay | ✅ re-invoking the executor with the same digest returned `already_handled, executed:false` |
+| Kill switch engage | ✅ forbid-all policy `ACTIVE`; agent tools → `[]` (blocked) |
+| Kill switch release | ✅ policy deleted, SSM → `normal`, tools restored; release verified the deny was gone first |
+| Existing-logging ownership | ✅ `create` mode set logging where none existed (no overwrite of an existing config) |
+
+**Real bugs the live run caught and fixed (none visible to synth/unit tests):**
+1. Runtime `SYSTEM_PROMPT` env rejected control characters (compiled prompt had newlines) → single-line.
+2. HITL state-machine role lacked `kms:Decrypt`/`GenerateDataKey` on the evidence CMK (CMK-encrypted
+   approvals table + SNS topic) → granted.
+3. HITL executor invoked the tool Lambda with the wrong event shape → now passes args as the payload
+   and the tool name via Lambda `ClientContext` (`bedrockAgentCoreToolName`).
+4. Kill-switch Lambda's bundled boto3 was too old for `ListPolicySummaries` + `create_policy`
+   `enforcementMode` → bundle a current boto3; use `ListPolicySummaries` (no KMS decrypt) for release.
+5. Kill-switch role was missing gateway/engine permissions (`ManageResourceScopedPolicy`, `GetGateway`,
+   `ListGatewayTargets`, policy-validation gateway calls) → granted `bedrock-agentcore:*` scoped to the
+   platform's own gateway + policy-engine ARNs, plus KMS on the engine's CMK.
+6. The blanket forbid needed `validationMode: IGNORE_ALL_FINDINGS`; Create/DeletePolicy are async → the
+   handler now polls to completion (and tolerated IAM-propagation lag on first engage).
+
 ## Still required before each gate closes
 
-- **Gate 2 (standalone):** re-run the full citizen-311 workflow from a clean checkout post-fix — an
-  authorized action succeeds, unauthorized tools/models/identities are denied, approval executes the
-  reviewed action exactly once, kill-switch engage/release work, logging survives deploy+teardown.
+- **Gate 2 (standalone):** ✅ validated live (above). Fixes committed; re-validation reproducible from a
+  clean checkout following `docs/runbooks/DEPLOYMENT.md` §12b.
 - **Gate 3 (hub/spoke):** OAM links, cross-account evidence delivery with KMS grants, registry/catalog
   consumer access; validate from two real accounts.
 - **Gate 4 (org):** deploy into a test OU; prove governed inference/upgrades/incident controls work

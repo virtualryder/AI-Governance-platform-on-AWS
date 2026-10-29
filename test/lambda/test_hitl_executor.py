@@ -44,7 +44,7 @@ class _FakeLambda:
     def __init__(self):
         self.invocations = 0
 
-    def invoke(self, FunctionName, Payload):
+    def invoke(self, FunctionName, Payload, **kwargs):
         self.invocations += 1
 
         class _Body:

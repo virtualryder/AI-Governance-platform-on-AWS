@@ -83,9 +83,9 @@ controls that were provisioned but not wired end to end; those critical defects 
 | Capability | Status | Notes |
 |---|---|---|
 | CDK build / 4-mode synth / cdk-nag | **Live-tested** (local) | 30 jest + 17 pytest green; nag clean ×4 modes |
-| Standalone foundation (baseline + platform + controls) | **Integrated** | enforcing Cedar, guardrail wired to runtime, HITL end-to-end, safe logging ownership |
-| citizen-311 governed workflow | **Live-validated earlier; re-validation pending** | the original run predates these fixes — re-run from a clean checkout before claiming it |
-| Kill switch / guardrail enforcement / interceptor | **Integrated + unit-tested** | behavioral pytest for kill-switch + interceptor + HITL executor + logging ownership |
+| Standalone foundation (baseline + platform + controls) | **Live-tested** (2026-10-29) | deployed to a real account; enforcing Cedar, guardrail pinned to runtime, HITL end-to-end, safe logging ownership — all exercised live |
+| citizen-311 governed workflow | **Live-validated** (post-fix) | full workflow run in-account: authorized/denied/approved/kill-switch all pass — see `docs/REMEDIATION.md` Gate 2 |
+| Kill switch / guardrail enforcement / interceptor | **Live-tested + unit-tested** | engage→block→release→restore verified live; behavioral pytest for kill-switch + interceptor + HITL executor + logging ownership |
 | Human identity (Cognito groups + human client) | **Integrated** | provisioned; user creation is a scripted operational step |
 | Hub / spoke cross-account integration | **Partial** | sink + registry exist; **OAM links, evidence delivery, catalog/registry sharing are not complete** |
 | Org enforcement (SCPs, StackSet, budget→SCP) | **Synth/nag-tested only** | needs a test OU; **SCP principal alignment + guardrail ownership need live validation** |
@@ -95,11 +95,11 @@ controls that were provisioned but not wired end to end; those critical defects 
 **Maturity legend:** *live-tested* (run against AWS post-fix) · *integrated* (wired across constructs,
 synth/unit-verified) · *partial* (some pieces missing) · *synth/nag-tested only* · *scaffolding*.
 
-**Hardening plan (gated):** (1) truthful scope + safe defaults ✅; (2) **standalone reference** — close
-the critical wiring, re-validate end to end from a clean checkout *(current focus)*; (3) connected
-hub/spoke; (4) org enforcement in a test OU; (5) optional A2A / Omni / private networking as separate
-profiles. See `docs/REMEDIATION.md` for the findings-to-fixes map and `docs/CONTROLS.md` for per-control
-status.
+**Hardening plan (gated):** (1) truthful scope + safe defaults ✅; (2) **standalone reference** —
+critical wiring closed and **validated live in a real account** (2026-10-29) ✅; (3) connected
+hub/spoke *(next)*; (4) org enforcement in a test OU; (5) optional A2A / Omni / private networking as
+separate profiles. See `docs/REMEDIATION.md` for the findings-to-fixes map + Gate-2 evidence and
+`docs/CONTROLS.md` for per-control status.
 
 **Packaging note:** CDK synthesizes CloudFormation but these are **not four prepackaged CloudFormation
 launch products** — templates depend on assets (Lambdas, custom-resource providers) and, for the

@@ -165,6 +165,10 @@ export class HumanInTheLoop extends Construct {
       tracingEnabled: true,
       logs: { destination: logGroup, level: sfn.LogLevel.ALL, includeExecutionData: true },
     });
+    // The DynamoPutItem/UpdateItem tasks and the SNS publish target the CMK-encrypted approvals table
+    // and topic; the state-machine role needs KMS on the evidence key or those steps fail with
+    // AccessDenied (the DynamoDB/SNS task auto-grants don't include the key).
+    encryptionKey.grantEncryptDecrypt(this.stateMachine.role);
 
     this.approvalFn = new lambda.Function(this, 'ApprovalFn', {
       runtime: lambda.Runtime.PYTHON_3_13,

@@ -19,6 +19,9 @@ _spec = importlib.util.spec_from_file_location("killswitch_index", _path)
 killswitch = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(killswitch)
 
+# The handler polls async Create/DeletePolicy with time.sleep; stub it so tests don't actually wait.
+killswitch.time.sleep = lambda *_: None
+
 KILL = "govai_killswitch_forbid_all"
 
 
@@ -56,8 +59,8 @@ class _FakeACC:
 
         self.exceptions = _Exc()
 
-    def list_policies(self, **_):
-        return {"policies": list(self.policies)}  # AWS returns `policies`
+    def list_policy_summaries(self, **_):
+        return {"policies": list(self.policies)}  # metadata-only, no KMS decrypt
 
     def delete_policy(self, policyEngineId, policyId):
         self.deleted.append(policyId)

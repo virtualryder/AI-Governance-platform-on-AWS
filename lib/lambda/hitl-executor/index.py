@@ -8,6 +8,7 @@ does not execute again.
 
 Input: {actionDigest, action, args, actor, approver, approvedAt, caseId, targetArn}
 """
+import base64
 import json
 import os
 
@@ -50,9 +51,16 @@ def handler(event, _context):
     # use-case submit tool). No target configured -> record only (safe no-op).
     result = {"executed": False, "note": "no execution target configured"}
     if target:
+        # The gateway tool Lambda reads the tool name from the Lambda client context
+        # (bedrockAgentCoreToolName) and the arguments from the event body — mirror that contract so
+        # the executor's direct invoke matches a normal gateway invocation.
+        client_context = base64.b64encode(
+            json.dumps({"custom": {"bedrockAgentCoreToolName": event["action"]}}).encode()
+        ).decode()
         resp = lam.invoke(
             FunctionName=target,
-            Payload=json.dumps({"tool": event["action"], "arguments": event.get("args", {})}).encode(),
+            Payload=json.dumps(event.get("args", {})).encode(),
+            ClientContext=client_context,
         )
         body = resp.get("Payload")
         payload = json.loads(body.read() or b"{}") if body else {}

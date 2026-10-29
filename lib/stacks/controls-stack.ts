@@ -31,6 +31,7 @@ export class ControlsStack extends PlatformStack {
       this.killSwitch = new KillSwitch(this, 'KillSwitch', {
         config: this.config,
         paramPrefix: this.paramPrefix,
+        encryptionKey,
       });
     }
 

@@ -135,15 +135,17 @@ export class UseCase extends Construct {
     this.runtimeModelId = manifest.model?.runtime_model_id;
     const wf = manifest.workflow;
     if (wf?.steps) {
-      const steps = (wf.steps as string[]).map((s, i) => `${i + 1}. ${s}`).join('\n');
-      this.systemPrompt =
-        `You are the ${manifest.agent.title} agent. Run this governed workflow end to end:\n${steps}\n\n` +
+      // Single line: AgentCore Runtime environment variables reject control characters (incl. newlines).
+      const steps = (wf.steps as string[]).map((s, i) => `(${i + 1}) ${s}`).join('; ');
+      const raw =
+        `You are the ${manifest.agent.title} agent. Run this governed workflow end to end: ${steps}. ` +
         (consequential
-          ? `You must NEVER perform the consequential action "${consequential}" directly. When the ` +
+          ? `You must NEVER perform the consequential action "${consequential}" directly; when the ` +
             'workflow reaches it, call request_human_signoff with the required fields and STOP — a human ' +
             'approver files it through the sign-off gate. '
           : '') +
         'Use only the governed tools available to you at the gateway.';
+      this.systemPrompt = raw.split('').map((c) => (c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127 ? ' ' : c)).join('').replace(/\s+/g, ' ').trim();
     }
   }
 }

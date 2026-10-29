@@ -118,8 +118,15 @@ export interface PlatformConfig {
     governedRolePrefix?: string;
     /** Evidence bucket name prefix the control-plane-integrity SCP protects. Default `govai-<customer>`. */
     evidenceBucketPrefix?: string;
-    /** Guardrail ARN(:version) the Bedrock org declarative policy pins as the org floor. */
+    /** Guardrail ARN(:version) the Bedrock org declarative policy pins as the org floor. Must be a
+     * MANAGEMENT-account-owned, numeric-version guardrail with a resource policy sharing it to org
+     * members (AWS requirement for BEDROCK_POLICY). The loader warns if it is not in the management
+     * account when `managementAccountId` is known. */
     orgGuardrailArn?: string;
+    /** Run org-wide StackSets as a delegated administrator (`CallAs: DELEGATED_ADMIN`) instead of from
+     * the management account (`SELF`, default). Enable only after the delegated-admin path is set up
+     * (trusted access + service-managed StackSets delegation). */
+    delegatedAdmin?: boolean;
   };
   /** Multi-account topology. 'centralized' (default) keeps shared services + workloads together;
    * 'distributed'/'federated' add workload accounts and (federated) cross-account OAuth trust. */
@@ -262,10 +269,29 @@ function validate(cfg: PlatformConfig): void {
   const ma = cfg.agentcore.multiAgent;
   if (ma?.enabled && ma.remoteCollaborators?.length && cfg.agentcore.protocol !== 'A2A')
     errs.push("remoteCollaborators require agentcore.protocol 'A2A' (agent-to-agent invoke)");
+  // F13: the org guardrail floor (BEDROCK_POLICY) must be owned by the management account.
+  const gArn = cfg.org?.orgGuardrailArn;
+  if (gArn && cfg.org?.managementAccountId) {
+    const owner = gArn.split(':')[4];
+    if (owner && owner !== cfg.org.managementAccountId)
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[config] org.orgGuardrailArn is owned by account ${owner}, not the management account ` +
+          `${cfg.org.managementAccountId}. AWS requires a management-account-owned, numeric-version ` +
+          'guardrail (shared to org members) for the Bedrock org floor.',
+      );
+  }
   const pug = cfg.controls.perUserGovernance;
   if (pug?.enabled && pug.downgradeAtTokens && !pug.fallbackModelId)
     errs.push('perUserGovernance.downgradeAtTokens requires a fallbackModelId');
   if (errs.length) throw new Error(`Invalid platform config:\n - ${errs.join('\n - ')}`);
+}
+
+/** The governed-role name prefix the org SCPs key on. Platform execution roles are named under this
+ * so the inference-perimeter admits them and the control-plane SCPs can exempt specific control roles
+ * (`<prefix>-killswitch-*`, `<prefix>-invlog-*`). Must match `org.governedRolePrefix` default. */
+export function governedRolePrefix(cfg: PlatformConfig): string {
+  return cfg.org?.governedRolePrefix ?? `govai-${cfg.customerName}-governed`;
 }
 
 export function platformTags(cfg: PlatformConfig): Record<string, string> {

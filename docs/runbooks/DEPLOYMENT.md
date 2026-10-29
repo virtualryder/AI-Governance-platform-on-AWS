@@ -387,6 +387,39 @@ first live validation, not a proven path. Requires a **hub account** and ≥1 **
 **Known follow-ups:** cross-account KMS + Object-Lock replication is intricate — confirm replicas land
 and are readable by the hub; the Agent Registry create does not yet poll `GetRegistry` for readiness.
 
+## 12d. Org enforcement (SCPs/StackSets) — built, NOT yet live-validated; test-OU-first
+
+**Do NOT attach the SCPs to an OU that contains an account you deploy/operate from without the exempt
+roles in place — you can lock yourself out.** Validate in a **dedicated test OU** with throwaway
+accounts before touching production.
+
+**Prerequisites:** an AWS Organization (all-features), a test OU, management-account (or a configured
+delegated-admin) access, trusted access enabled for the services used (StackSets, Bedrock org policy).
+
+**Principal alignment (F03 — built):** the platform names its execution roles under the governed
+prefix so the SCPs admit them — the runtime `govai-<customer>-governed-runtime-*` (inference allowed),
+the kill switch `...-governed-killswitch-*` and invocation-logging `...-governed-invlog-*` (control-plane
+exempted), plus the CDK CloudFormation execution role (`cdk-*-cfn-exec-role-*`) and the SCP-exempt
+deployer. If you change `org.governedRolePrefix`, keep it consistent across all accounts.
+
+**Deploy order:** (1) create the test OU + move throwaway spoke accounts in; (2) deploy the spoke
+platform into those accounts FIRST (so the governed roles exist); (3) deploy `-c mode=org` from the
+management account with `org.agenticOuId` = the test OU; (4) only then confirm the SCPs are attached.
+
+**Guardrail floor (F13):** `org.orgGuardrailArn` must be a management-account-owned, numeric-version
+guardrail with a resource policy sharing it to org members (the loader warns if it is not in
+`org.managementAccountId`). Neither hub nor org creates that floor guardrail — provision it in the
+management account first.
+
+**Delegated admin (F13):** set `org.delegatedAdmin: true` to run the Guard-hook StackSet as
+`CallAs: DELEGATED_ADMIN` (otherwise `SELF` from the management account). Register the delegated admin
++ StackSets delegation before enabling.
+
+**Validation matrix to CLOSE the gate (not yet run — no Organization available here):** governed
+inference succeeds under the SCPs; a non-governed role's inference is denied; the deployer can upgrade
+guardrails/logging; the kill switch engages/releases under the SCPs; the budget→freeze SCP attaches at
+threshold and detaches on recovery; account remove/re-add and hook WARN→FAIL behave as intended.
+
 ## 13. Operations
 
 - **Health**: Runtime endpoint `READY`; gateway reachable; `GetTraceSegmentDestination` → `ACTIVE`.

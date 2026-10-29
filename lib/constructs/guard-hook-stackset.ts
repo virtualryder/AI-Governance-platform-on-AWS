@@ -90,7 +90,9 @@ export class GuardHookStackSet extends Construct {
       permissionModel: 'SERVICE_MANAGED',
       autoDeployment: { enabled: true, retainStacksOnAccountRemoval: false },
       capabilities: ['CAPABILITY_NAMED_IAM'],
-      callAs: 'SELF',
+      // SELF = run from the management account (default); DELEGATED_ADMIN = run from a registered
+      // delegated administrator account (requires trusted access + StackSets delegation set up).
+      callAs: config.org?.delegatedAdmin ? 'DELEGATED_ADMIN' : 'SELF',
       templateBody: JSON.stringify(embeddedTemplate),
       stackInstancesGroup: [
         {

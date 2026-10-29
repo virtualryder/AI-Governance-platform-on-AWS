@@ -11,7 +11,7 @@ synth/nag/unit-verified locally; items needing multi-account or live AWS validat
 |---|---|---|---|
 | F01 | Default Cedar observes (LOG_ONLY), not enforces | ✅ | Gateway defaults to `ENFORCE`; loader rejects `LOG_ONLY` unless `agentcore.acknowledgeNonEnforcingCedar:true` |
 | F02 | Guardrail created but enforcement not wired | ✅ | Deny policy attached to the runtime role; covers inference-profile ARNs; harness pins approved `GUARDRAIL_ID`/`VERSION`; account-level option documented |
-| F03 | Org SCPs conflict with the platform's own roles | 🟡 | Documented as a known org-mode gap; principal alignment + exemptions need a test-OU pass (Gate 4) |
+| F03 | Org SCPs conflict with the platform's own roles | 🟡→built | **Fixed (Gate 4): platform execution roles named under the governed prefix (`-runtime-*`, `-killswitch-*`, `-invlog-*`) so the inference-perimeter admits the runtime and the control-plane SCPs exempt the specific control roles; added the CDK CFN exec role + deployer to the exemptions.** Synth/test-verified; needs a test OU to live-validate under active SCPs |
 | F04 | Registry reads a nonexistent response field | ✅ | Uses `registryArn` (CreateRegistry's real field); DeleteRegistry takes the ARN; grounded against the API ref |
 | F05 | HITL is a detached primitive | ✅ | End-to-end: agent `request_human_signoff` → state machine (propose/approve/reject/timeout) → **exactly-once** executor (separate role) → audit ledger; replay-guarded |
 | F06 | Kill-switch release reports success without removing the deny | ✅ | Reads `policies` (not `items`), paginates, validates an explicit action enum, and verifies the policy is gone before flipping to `normal` |
@@ -21,8 +21,8 @@ synth/nag/unit-verified locally; items needing multi-account or live AWS validat
 | F10 | Multi-agent not implemented in the harness | 🟡 | Relabelled **IAM scaffolding, not orchestration** in README/CONTROLS; harness orchestration tracked (Gate 5) |
 | F11 | Existing-account logging overwritten/deleted | ✅ | Ownership modes (create/adopt/manage): refuses to overwrite a pre-existing config, restores it on teardown |
 | F12 | Fresh-account observability incomplete | ✅ | Adds the X-Ray→CloudWatch Logs resource policy and honors `observabilityIndexingPercentage` (UpdateIndexingRule) |
-| F13 | Org prerequisites / delegated admin not executable | ⬜ | Management-account-first documented; delegated-admin (`DELEGATED_ADMIN`/CfCT) + guardrail ownership tracked (Gate 4) |
-| F14 | Budget action broader than its name | 🟡 | Documented: unfiltered budgets measure account-wide spend; cost-filter scoping tracked; request-side rate limit is the immediate containment |
+| F13 | Org prerequisites / delegated admin not executable | 🟡→built | `org.delegatedAdmin` switches the Guard-hook StackSet to `CallAs: DELEGATED_ADMIN` (else `SELF`, management-account-first); the loader warns if the org floor guardrail is not management-account-owned. Management-account path is the supported default; delegated-admin still needs live validation |
+| F14 | Budget action broader than its name | 🟡→built | Org budget now carries a Bedrock-service cost filter (measures AI spend, not all cost); documented that it is still management-account billing data and the freeze SCP denies only Bedrock inference. Request-side rate limit remains the immediate containment |
 | F15 | Optional flags / example values create false expectations | ✅ | Kill switch gated on its flag; Omni placeholder removed; unused alpha dep removed; LICENSE added; LOG_ONLY rejected |
 | F16 | Build + manifest not one pipeline | ✅ | `build-image.sh` requires named profile/region, creates ECR (scan + immutable), deploys by digest; runtime wired to the manifest model + compiled system prompt |
 
@@ -76,6 +76,10 @@ the full citizen-311 workflow end to end. All acceptance scenarios passed:
   accounts in one Organization — a real workload trace + retained evidence reaching the hub, and
   denied cross-account access. Blocked here on having only one account; reproduce per runbook once a
   second account/Org exists. Registry async-readiness polling (GetRegistry) also remains a follow-up.
-- **Gate 4 (org):** deploy into a test OU; prove governed inference/upgrades/incident controls work
-  while SCPs are active; fix SCP principal alignment; management-account-owned floor guardrail.
+- **Gate 4 (org):** SCP principal alignment, delegated-admin switch, guardrail-ownership warning, and
+  budget cost-scoping are **built** (synth/test-verified). **Still required to CLOSE:** deploy into a
+  real **test OU** (not a single standalone account — attaching deny-SCPs to your only account would
+  self-lockout) and prove governed inference, upgrades, incident controls, and rollback work while the
+  SCPs are active; test account remove/re-add, StackSet failures, hook WARN→FAIL, and budget-action
+  recovery. Blocked here: the test account is not in an Organization.
 - **Gate 5 (optional):** implement/test A2A orchestration, Omni live telemetry, private networking.

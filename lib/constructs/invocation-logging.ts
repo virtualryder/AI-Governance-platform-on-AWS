@@ -7,7 +7,7 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { Provider } from 'aws-cdk-lib/custom-resources';
 import { NagSuppressions } from 'cdk-nag';
 import { Construct } from 'constructs';
-import { PlatformConfig } from '../config/platform-config';
+import { PlatformConfig, governedRolePrefix } from '../config/platform-config';
 
 export interface InvocationLoggingProps {
   config: PlatformConfig;
@@ -81,6 +81,12 @@ export class InvocationLogging extends Construct {
       description: 'Bedrock model-invocation logging with safe ownership (adopt/create/manage).',
       environment: { STASH_PREFIX: stashPrefix },
     });
+    // Name under the governed control prefix so the org control-plane SCP exempts it (it calls
+    // Put/DeleteModelInvocationLoggingConfiguration, which that SCP otherwise denies). F03.
+    (onEvent.role!.node.defaultChild as iam.CfnRole).addPropertyOverride(
+      'RoleName',
+      `${governedRolePrefix(config)}-invlog-${config.environment}`,
+    );
     onEvent.addToRolePolicy(
       new iam.PolicyStatement({
         actions: [

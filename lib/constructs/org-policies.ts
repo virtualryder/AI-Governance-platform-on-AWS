@@ -25,8 +25,10 @@ function renderPolicy(relativePath: string, vars: Record<string, string>): objec
  * logging, the AgentCore/guardrail control plane, and evidence vaults. Every SCP exempts the deployer
  * role (the kingpin — without it the SCPs would lock the platform out of its own account).
  *
- * NOTE: governed agent execution roles (gateway/runtime, step 3) must be named with the governed
- * prefix for the inference-perimeter exemption to admit them — tracked as a role-naming alignment.
+ * Role alignment (F03): the platform's execution roles are named under the governed prefix so these
+ * SCPs admit them — the runtime role `<prefix>-runtime-*` (inference-perimeter allow), the kill-switch
+ * role `<prefix>-killswitch-*` and the invocation-logging role `<prefix>-invlog-*` (control-plane
+ * exemptions), plus the CDK CloudFormation execution role (`cdk-*-cfn-exec-role-*`) for deploys.
  */
 export class OrgPolicies extends Construct {
   readonly deployerRole: iam.Role;
@@ -131,6 +133,10 @@ export class OrgPolicies extends Construct {
           budgetType: 'COST',
           timeUnit: 'MONTHLY',
           budgetLimit: { amount: config.controls.monthlyBudgetUsd, unit: 'USD' },
+          // Scope the budget to Bedrock spend (F14) so it measures AI inference cost, not all account
+          // cost. NOTE: this is still management-account billing data; it is not a per-OU attribution
+          // and the freeze SCP it triggers only denies Bedrock inference, not other costs.
+          costFilters: { Service: ['Amazon Bedrock'] },
         },
       });
       const actionRole = new iam.Role(this, 'BudgetActionRole', {

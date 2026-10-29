@@ -13,7 +13,8 @@ Legend — Modes: **S**=standalone · **P**=spoke · **H**=hub · **O**=org.
 > the model allowlist is exact; invocation logging preserves existing account config; human identity +
 > observability prerequisites are wired). **Hub/spoke cross-account integration is now built (OAM
 > links, evidence replication, catalog shares, per-spoke dashboard widgets) but not yet live-validated
-> across two accounts; org enforcement is synth-tested only; and multi-agent A2A is IAM scaffolding —
+> across two accounts; org enforcement has its SCP principal alignment / delegated-admin / budget
+> scope built but is not yet validated in a live test OU; and multi-agent A2A is IAM scaffolding —
 > not functioning orchestration.** The
 > "deployed+verified on AWS" notes below predate the fixes and need re-validation from a clean checkout.
 > See [`REMEDIATION.md`](REMEDIATION.md) for the finding-by-finding status.

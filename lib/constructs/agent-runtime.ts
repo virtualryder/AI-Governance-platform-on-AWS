@@ -2,7 +2,7 @@ import { Stack } from 'aws-cdk-lib';
 import * as bac from 'aws-cdk-lib/aws-bedrockagentcore';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
-import { PlatformConfig } from '../config/platform-config';
+import { PlatformConfig, governedRolePrefix } from '../config/platform-config';
 import { InboundIdentity } from './identity';
 
 export interface AgentRuntimeProps {
@@ -37,6 +37,9 @@ export class AgentRuntime extends Construct {
     const name = `govai_${config.customerName.replace(/-/g, '_')}_${config.environment}`;
 
     this.role = new iam.Role(this, 'Role', {
+      // Named under the governed prefix so the org inference-perimeter SCP admits this role's
+      // inference (otherwise a spoke under the SCP would deny its own agent). F03 principal alignment.
+      roleName: `${governedRolePrefix(config)}-runtime-${config.environment}`,
       assumedBy: new iam.ServicePrincipal('bedrock-agentcore.amazonaws.com'),
       description: `AgentCore runtime execution role for ${config.customerName}`,
     });

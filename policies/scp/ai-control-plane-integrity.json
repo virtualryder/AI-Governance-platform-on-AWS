@@ -13,6 +13,8 @@
         "ArnNotLike": {
           "aws:PrincipalArn": [
             "arn:aws:iam::*:role/{{DEPLOYER_ROLE}}",
+            "arn:aws:iam::*:role/{{GOVERNED_PREFIX}}-invlog-*",
+            "arn:aws:iam::*:role/cdk-*-cfn-exec-role-*",
             "arn:aws:iam::*:role/AWSControlTowerExecution",
             "arn:aws:iam::*:role/stacksets-exec-*"
           ]
@@ -39,6 +41,8 @@
         "ArnNotLike": {
           "aws:PrincipalArn": [
             "arn:aws:iam::*:role/{{DEPLOYER_ROLE}}",
+            "arn:aws:iam::*:role/{{GOVERNED_PREFIX}}-killswitch-*",
+            "arn:aws:iam::*:role/cdk-*-cfn-exec-role-*",
             "arn:aws:iam::*:role/AWSControlTowerExecution",
             "arn:aws:iam::*:role/stacksets-exec-*"
           ]
@@ -60,6 +64,7 @@
         "ArnNotLike": {
           "aws:PrincipalArn": [
             "arn:aws:iam::*:role/{{DEPLOYER_ROLE}}",
+            "arn:aws:iam::*:role/cdk-*-cfn-exec-role-*",
             "arn:aws:iam::*:role/AWSControlTowerExecution",
             "arn:aws:iam::*:role/stacksets-exec-*"
           ]

@@ -88,7 +88,7 @@ controls that were provisioned but not wired end to end; those critical defects 
 | Kill switch / guardrail enforcement / interceptor | **Live-tested + unit-tested** | engage→block→release→restore verified live; behavioral pytest for kill-switch + interceptor + HITL executor + logging ownership |
 | Human identity (Cognito groups + human client) | **Integrated** | provisioned; user creation is a scripted operational step |
 | Hub / spoke cross-account integration | **Built, not live-validated** | spoke OAM link, cross-account evidence replication (+ hub inbound policy), catalog shares, per-spoke dashboard widgets — synth/nag/test-verified; needs two real accounts in one Org to close (Gate 3) |
-| Org enforcement (SCPs, StackSet, budget→SCP) | **Synth/nag-tested only** | needs a test OU; **SCP principal alignment + guardrail ownership need live validation** |
+| Org enforcement (SCPs, StackSet, budget→SCP) | **Built, not live-validated** | SCP principal alignment fixed (platform roles named under the governed prefix + CDK exec-role exemption), delegated-admin switch, Bedrock-scoped budget, guardrail-ownership warning — synth/test-verified; needs a **test OU** to validate under active SCPs (Gate 4) |
 | Multi-agent A2A | **IAM scaffolding only** | the Python harness does not yet orchestrate collaborators — not functioning multi-agent |
 | CloudWatch Omni Space | **Synth-tested** | needs a real Omni domain + live telemetry validation |
 
@@ -98,7 +98,8 @@ synth/unit-verified) · *partial* (some pieces missing) · *synth/nag-tested onl
 **Hardening plan (gated):** (1) truthful scope + safe defaults ✅; (2) **standalone reference** —
 critical wiring closed and **validated live in a real account** (2026-10-29) ✅; (3) connected
 hub/spoke — **integration built** (OAM links, evidence replication, catalog shares); cross-account
-live-validation pending (needs two accounts in one Org); (4) org enforcement in a test OU; (5)
+live-validation pending (needs two accounts in one Org); (4) org enforcement — **principal
+alignment + delegated-admin + budget scope built**; live validation pending (needs a test OU); (5)
 optional A2A / Omni / private networking as
 separate profiles. See `docs/REMEDIATION.md` for the findings-to-fixes map + Gate-2 evidence and
 `docs/CONTROLS.md` for per-control status.

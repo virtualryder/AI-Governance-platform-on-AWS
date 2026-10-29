@@ -5,7 +5,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
-import { PlatformConfig } from '../config/platform-config';
+import { PlatformConfig, governedRolePrefix } from '../config/platform-config';
 
 export interface KillSwitchProps {
   config: PlatformConfig;
@@ -52,6 +52,12 @@ export class KillSwitch extends Construct {
       environment: { PARAM_PREFIX: paramPrefix },
       description: 'Engage/release the governed-AI kill switch (forbid-all Cedar + SSM flag).',
     });
+    // Name the role under the governed control prefix so the org control-plane SCP can exempt it
+    // (it legitimately calls CreatePolicy/DeletePolicy, which that SCP otherwise denies). F03.
+    (this.fn.role!.node.defaultChild as iam.CfnRole).addPropertyOverride(
+      'RoleName',
+      `${governedRolePrefix(props.config)}-killswitch-${props.config.environment}`,
+    );
 
     // Read platform discovery params and the kill-switch flag; manage Cedar policies on the engine.
     this.fn.addToRolePolicy(

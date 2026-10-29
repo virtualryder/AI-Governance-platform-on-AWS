@@ -525,3 +525,54 @@ test('gate3 hub: archive accepts inbound replication + portfolio shared + spoke 
   const dash = t.findResources('AWS::CloudWatch::Dashboard');
   expect(JSON.stringify(dash)).toContain('333333333333');
 });
+
+// ---- Gate 4: org principal alignment + delegated admin + budget scope (F03/F13/F14) ----
+
+test('gate4: runtime role is named under the governed prefix (inference-perimeter admits it, F03)', () => {
+  const t = agentPlatformTemplate((c) => {
+    c.agentcore.runtimeImageUri = '111111111111.dkr.ecr.us-east-1.amazonaws.com/agent:latest';
+  });
+  t.hasResourceProperties('AWS::IAM::Role', {
+    RoleName: Match.stringLikeRegexp('^govai-example-state-agency-governed-runtime-'),
+  });
+});
+
+test('gate4: control roles named so the control-plane SCP can exempt them (F03)', () => {
+  const t = controlsTemplate(); // standalone controls has the kill switch
+  t.hasResourceProperties('AWS::IAM::Role', {
+    RoleName: Match.stringLikeRegexp('^govai-example-state-agency-governed-killswitch-'),
+  });
+});
+
+test('gate4: org SCPs exempt the deployer, control roles, and the CDK exec role (F03)', () => {
+  const t = Template.fromStack(
+    new OrgFoundationStack(new App(), 'ORG4', { config, mode: 'org', env: { region: config.region } }),
+  );
+  const policies = t.findResources('AWS::Organizations::Policy');
+  const scpText = JSON.stringify(Object.values(policies).filter((p: any) => p.Properties.Type === 'SERVICE_CONTROL_POLICY'));
+  // Inference deny now exempts the deployer + CDK CFN exec role (not just the governed prefix).
+  expect(scpText).toContain('cdk-*-cfn-exec-role-*');
+  // Control-plane SCP exempts the specific control roles.
+  expect(scpText).toContain('-killswitch-*');
+  expect(scpText).toContain('-invlog-*');
+});
+
+test('gate4: org budget is scoped to Bedrock spend (F14)', () => {
+  const c = JSON.parse(JSON.stringify(config)) as PlatformConfig;
+  c.org = { agenticOuId: 'ou-abcd-12345678' };
+  const t = Template.fromStack(
+    new OrgFoundationStack(new App(), 'ORG4B', { config: c, mode: 'org', env: { region: c.region } }),
+  );
+  t.hasResourceProperties('AWS::Budgets::Budget', {
+    Budget: Match.objectLike({ CostFilters: Match.objectLike({ Service: ['Amazon Bedrock'] }) }),
+  });
+});
+
+test('gate4: StackSet runs as DELEGATED_ADMIN when configured (F13)', () => {
+  const c = JSON.parse(JSON.stringify(config)) as PlatformConfig;
+  c.org = { organizationId: 'o-abcd1234ef', agenticOuId: 'ou-abcd-12345678', delegatedAdmin: true };
+  const t = Template.fromStack(
+    new OrgFoundationStack(new App(), 'ORG4C', { config: c, mode: 'org', env: { region: c.region } }),
+  );
+  t.hasResourceProperties('AWS::CloudFormation::StackSet', { CallAs: 'DELEGATED_ADMIN' });
+});

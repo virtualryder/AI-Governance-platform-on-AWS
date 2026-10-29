@@ -6,9 +6,19 @@ mode, an IaC mechanism, and the governance concern it satisfies. "Custom" = `Aws
 
 Legend — Modes: **S**=standalone · **P**=spoke · **H**=hub · **O**=org.
 
+> **Maturity & remediation (29 Oct 2026):** an independent readiness review found several controls
+> provisioned but not wired end to end. The critical standalone defects are fixed (Cedar enforces by
+> default; the guardrail is attached to the runtime and pinned in the harness; HITL is a complete
+> approve→exactly-once-execute→audit workflow; the kill-switch release verifies the deny is removed;
+> the model allowlist is exact; invocation logging preserves existing account config; human identity +
+> observability prerequisites are wired). **Hub/spoke integration is partial, org enforcement is
+> synth-tested only, and multi-agent A2A is IAM scaffolding — not functioning orchestration.** The
+> "deployed+verified on AWS" notes below predate the fixes and need re-validation from a clean checkout.
+> See [`REMEDIATION.md`](REMEDIATION.md) for the finding-by-finding status.
+
 ### Implementation status (by build step)
 - **Step 2 (baseline, deployed+verified on AWS):** A1, A2, A3, A4, B1, B2.
-- **Step 3 (agent platform, deployed+verified on AWS):** C1, C2, C3, C5 (engine + per-gateway Cedar; `LOG_ONLY` default), D2, G1, G2, G3.
+- **Step 3 (agent platform; defects since fixed, re-validation pending):** C1, C2, C3, C5 (engine + per-gateway Cedar; now **`ENFORCE` default**, `LOG_ONLY` rejected unless acknowledged), D2 (now with the X-Ray→Logs resource policy + indexing %), G1, G2, G3.
 - **Step 4 (controls, synth+nag+tests green; per-user path nag-verified via sa-test):** E1 (Cedar forbid-all kill switch, Lambda-driven), E4 (budgets + alerts), E6 (HITL `waitForTaskToken`), E7 (per-user interceptor + ledger: per-user block, model allowlist by Cognito group, rate limit; token/USD budget + auto-downgrade are RESPONSE-side extensions). E5 (gateway rate limit) stays per-use-case — `CfnGatewayRateLimit` keys on specific dimension values, so blanket RPM lives in the E7 interceptor.
 - **Step 5 slice A (org foundation, synth+nag+tests green):** org SCPs — AI inference perimeter (B4-adjacent: deny Bedrock inference outside governed roles) + control-plane integrity (protect invocation logging, AgentCore/guardrail control plane, evidence vaults), both lifted from the Aegis baseline and parameterized; the SCP-exempt platform deployer role (the kingpin every SCP exempts). E2 (broad SCP kill switch) is satisfied by these perimeters. **B3** (Bedrock org declarative policy) done — native `AWS::Organizations::Policy` type `BEDROCK_POLICY` pinning the guardrail floor + comprehensive content guarding org-wide (gated on `org.orgGuardrailArn`).
 - **Step 5 slice B (governance hub, synth+nag+tests green):** A5 (central WORM log archive), D3 (OAM cross-account observability sink, org-scoped). Created only in dedicated `hub` mode; `standalone` collapses (baseline provides evidence).

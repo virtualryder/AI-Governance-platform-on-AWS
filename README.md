@@ -30,22 +30,27 @@ npx cdk deploy --all -c mode=standalone -c configFile=config/<customer>.json --p
   Lock, TLS-only, versioned), multi-region CloudTrail with **AgentCore data events** + CMK-encrypted
   CloudWatch Logs, **Bedrock model-invocation logging**, and a **versioned Bedrock Guardrail** with an
   ungoverned-inference deny (`Null:{bedrock:GuardrailIdentifier}`).
-- **AgentCore layer** (native L1): Cognito (short-lived JWT) or external IdP, **MCP Gateway** with a
-  **Cedar PolicyEngine** (deny-by-default, `LOG_ONLY`→`ENFORCE`), WorkloadIdentity, Memory, Browser /
-  CodeInterpreter, image-gated **Runtime**, and CloudWatch Transaction Search observability.
-- **Controls**: layered **kill switch** (Cedar forbid-all), **HITL** Step Functions (`waitForTaskToken`),
-  Budgets + alerts, and a **per-user Gateway interceptor** + DynamoDB ledger (block / model-allowlist by
-  Cognito group / rate limit).
+- **AgentCore layer** (native L1): Cognito (short-lived JWT, machine **and** human clients + groups) or
+  external IdP, **MCP Gateway** with a **Cedar PolicyEngine** that **enforces by default** (`ENFORCE`;
+  `LOG_ONLY` is rejected unless explicitly acknowledged), WorkloadIdentity, Memory, Browser /
+  CodeInterpreter, image-gated **Runtime** pinned to the approved guardrail, and CloudWatch Transaction
+  Search observability (resource policy + indexing percentage wired).
+- **Controls**: layered **kill switch** (Cedar forbid-all, with a release that verifies the deny is gone
+  before reporting released), an **end-to-end HITL** workflow (propose → approve/reject/timeout →
+  exactly-once execute via a separately-scoped executor → audit ledger), Budgets + alerts, and a
+  **per-user Gateway interceptor** + DynamoDB ledger (block / exact model allowlist by Cognito group /
+  rate limit).
 - **Hub + Org**: organization SCPs (AI-inference perimeter + control-plane integrity), SCP-exempt
   deployer role, Bedrock org declarative policy (`BEDROCK_POLICY`), CloudFormation **Guard hooks**,
   **Budgets→SCP cost kill switch**, central WORM log archive, OAM cross-account sink, Service Catalog,
   **Agent Registry** (+RAM), a **CloudWatch governance dashboard**, **SRA detective Config rules**,
   an **org-wide Guard-hook StackSet** (service-managed, auto-deploying to the Agentic OU), and an
   opt-in **CloudWatch Omni Space** (`AWS::CloudWatch::Space`) upgrade for unified + agent observability.
-- **Multi-agent (A2A)**: config-driven agent-to-agent collaboration — the runtime role is granted
-  `InvokeAgentRuntime` on allow-listed collaborator runtimes (plus OBO token exchange and Agent
-  Registry publish), and the `multiAgent` config is handed to the Strands harness. Cedar still governs
-  the *invoked* agent's tools, not the A2A invoke itself.
+- **Multi-agent (A2A) — IAM scaffolding only, not functioning orchestration**: the runtime role is
+  granted `InvokeAgentRuntime` on allow-listed collaborator runtimes (plus OBO token exchange and Agent
+  Registry publish) and the `multiAgent` config is handed to the harness, but the Python harness does
+  **not** yet construct collaborators, exchange OBO tokens, publish registry records, or run the A2A
+  server path. Do not treat it as working multi-agent collaboration (tracked in `docs/REMEDIATION.md`).
 - **Use cases**: a reusable **Strands harness** (`use-cases/_harness/`: `agent.py` + `render.py`
   manifest compiler + ARM64 Dockerfile) and **citizen-311** — a manifest-driven agent whose tool
   targets and Cedar policies are deployed onto the gateway from the manifest.
@@ -68,19 +73,35 @@ Copy `config/platform.example.json` to `config/<customer>.json` for each custome
 > **Deployment is intentionally not run from arbitrary machines.** Synth and test freely; deploy only
 > against an explicitly named target account/profile (`--profile <name>`).
 
-## Status
-**All six build steps complete** (see `CLAUDE.md`). All four modes synth, **24 tests green, cdk-nag
-clean** across standalone/hub/spoke/org.
+## Maturity
 
-**Live-validated on AWS** (standalone, torn down after): the full citizen-311 agent ran end-to-end —
-Cognito JWT → AgentCore Runtime → MCP Gateway → per-user interceptor → Cedar. The agent listed its
-governed tools, ran the intake workflow, and **correctly refused the consequential `submit` action**
-(owned by the HITL sign-off gate). Deny-by-default was verified before any tools were attached.
+This is a **governance accelerator undergoing a defined hardening + validation phase** — not a
+production-certified, four-mode product. An independent readiness review (29 Oct 2026) found several
+controls that were provisioned but not wired end to end; those critical defects have since been fixed
+(see [`docs/REMEDIATION.md`](docs/REMEDIATION.md)). The honest per-capability status:
 
-**Org-wide Guard-hook rollout** (service-managed StackSet auto-deploying to the Agentic OU),
-**multi-agent A2A** invoke-authz + registry-discovery wiring (`multiAgent` config → runtime IAM for
-`InvokeAgentRuntime` / OBO token exchange / registry publish), and the **CloudWatch Omni Space**
-upgrade (`AWS::CloudWatch::Space` + optional `OmniDashboard`, via the raw `CfnResource` escape hatch
-since both are newer than the pinned `aws-cdk-lib`) are all built and synth/nag/test-verified. Live
-deploy of the StackSet needs an AWS Organization, and the Omni Space needs an Omni domain created
-during Omni onboarding. **No remaining backlog.**
+| Capability | Status | Notes |
+|---|---|---|
+| CDK build / 4-mode synth / cdk-nag | **Live-tested** (local) | 30 jest + 17 pytest green; nag clean ×4 modes |
+| Standalone foundation (baseline + platform + controls) | **Integrated** | enforcing Cedar, guardrail wired to runtime, HITL end-to-end, safe logging ownership |
+| citizen-311 governed workflow | **Live-validated earlier; re-validation pending** | the original run predates these fixes — re-run from a clean checkout before claiming it |
+| Kill switch / guardrail enforcement / interceptor | **Integrated + unit-tested** | behavioral pytest for kill-switch + interceptor + HITL executor + logging ownership |
+| Human identity (Cognito groups + human client) | **Integrated** | provisioned; user creation is a scripted operational step |
+| Hub / spoke cross-account integration | **Partial** | sink + registry exist; **OAM links, evidence delivery, catalog/registry sharing are not complete** |
+| Org enforcement (SCPs, StackSet, budget→SCP) | **Synth/nag-tested only** | needs a test OU; **SCP principal alignment + guardrail ownership need live validation** |
+| Multi-agent A2A | **IAM scaffolding only** | the Python harness does not yet orchestrate collaborators — not functioning multi-agent |
+| CloudWatch Omni Space | **Synth-tested** | needs a real Omni domain + live telemetry validation |
+
+**Maturity legend:** *live-tested* (run against AWS post-fix) · *integrated* (wired across constructs,
+synth/unit-verified) · *partial* (some pieces missing) · *synth/nag-tested only* · *scaffolding*.
+
+**Hardening plan (gated):** (1) truthful scope + safe defaults ✅; (2) **standalone reference** — close
+the critical wiring, re-validate end to end from a clean checkout *(current focus)*; (3) connected
+hub/spoke; (4) org enforcement in a test OU; (5) optional A2A / Omni / private networking as separate
+profiles. See `docs/REMEDIATION.md` for the findings-to-fixes map and `docs/CONTROLS.md` for per-control
+status.
+
+**Packaging note:** CDK synthesizes CloudFormation but these are **not four prepackaged CloudFormation
+launch products** — templates depend on assets (Lambdas, custom-resource providers) and, for the
+runtime, a prebuilt ARM64 ECR image. Treat it as one shared CDK implementation with deployment
+profiles.

@@ -18,7 +18,15 @@ export class OamSink extends Construct {
   constructor(scope: Construct, id: string, props: OamSinkProps) {
     super(scope, id);
     const { config } = props;
-    const orgId = config.hub?.organizationId;
+    // An unrestricted (Principal:* with no org condition) sink would let ANY AWS account link in.
+    // Require an organization id (hub- or org-scoped) so the sink is always org-allowlisted.
+    const orgId = config.hub?.organizationId ?? config.org?.organizationId;
+    if (!orgId) {
+      throw new Error(
+        'OamSink requires an organization id (hub.organizationId or org.organizationId) to scope who ' +
+          'may link to the governance sink; refusing to create an org-unrestricted sink.',
+      );
+    }
 
     const policy = {
       Version: '2012-10-17',
@@ -38,7 +46,7 @@ export class OamSink extends Construct {
               ],
             },
             // Only principals in the customer's org may link to the governance sink.
-            ...(orgId ? { StringEquals: { 'aws:PrincipalOrgID': orgId } } : {}),
+            StringEquals: { 'aws:PrincipalOrgID': orgId },
           },
         },
       ],

@@ -96,8 +96,18 @@ export class PlatformGuardrail extends Construct {
               'bedrock:Converse',
               'bedrock:ConverseStream',
             ],
-            resources: [`arn:${stack.partition}:bedrock:*::foundation-model/*`],
+            // Cover direct foundation-model calls AND the cross-region / application inference
+            // profiles the runtime actually uses — otherwise profile-based inference bypasses the deny.
+            resources: [
+              `arn:${stack.partition}:bedrock:*::foundation-model/*`,
+              `arn:${stack.partition}:bedrock:*:${stack.account}:inference-profile/*`,
+              `arn:${stack.partition}:bedrock:*:${stack.account}:application-inference-profile/*`,
+            ],
             conditions: {
+              // Deny any inference that carries no guardrail at all. The approved guardrail/version is
+              // pinned at the call site (the runtime harness passes GUARDRAIL_ID/VERSION); for strict
+              // account-wide "only the approved guardrail" enforcement, see the account-level
+              // put-enforced-guardrail-configuration option documented in docs/CONTROLS.md.
               Null: { 'bedrock:GuardrailIdentifier': 'true' },
             },
           }),

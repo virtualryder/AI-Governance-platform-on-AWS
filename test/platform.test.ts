@@ -167,6 +167,29 @@ test('agent platform: runtime + endpoint only when an image is configured', () =
   withImage.resourceCountIs('AWS::BedrockAgentCore::CodeInterpreterCustom', 1);
 });
 
+test('agent platform: runtime is pinned to the approved guardrail and denies ungoverned inference (F02)', () => {
+  const t = agentPlatformTemplate((c) => {
+    c.agentcore.runtimeImageUri = '111111111111.dkr.ecr.us-east-1.amazonaws.com/agent:latest';
+  });
+  // Guardrail id/version are handed to the harness via env.
+  t.hasResourceProperties('AWS::BedrockAgentCore::Runtime', {
+    EnvironmentVariables: Match.objectLike({ GUARDRAIL_ID: Match.anyValue(), GUARDRAIL_VERSION: Match.anyValue() }),
+  });
+  // A role carries the ungoverned-inference deny managed policy (attached to the runtime cross-stack).
+  // The deny ARN comes from the baseline via an SSM-backed CFN parameter; tie the role's
+  // ManagedPolicyArns Ref back to that parameter.
+  const params = (t.toJSON().Parameters ?? {}) as Record<string, unknown>;
+  const denyParamId = Object.keys(params).find((k) =>
+    JSON.stringify(params[k]).includes('baseline/ungoverned-inference-deny-arn'),
+  );
+  expect(denyParamId).toBeDefined();
+  const roles = t.findResources('AWS::IAM::Role');
+  const attached = Object.values(roles).some((r: any) =>
+    JSON.stringify(r.Properties.ManagedPolicyArns ?? []).includes(denyParamId!),
+  );
+  expect(attached).toBe(true);
+});
+
 test('agent platform: baseline Cedar attaches only when explicitly opted in', () => {
   const t = agentPlatformTemplate((c) => {
     c.agentcore.attachBaselineCedarPolicies = true;

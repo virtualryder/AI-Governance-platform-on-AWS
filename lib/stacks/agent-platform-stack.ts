@@ -1,5 +1,6 @@
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as kms from 'aws-cdk-lib/aws-kms';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as bac from 'aws-cdk-lib/aws-bedrockagentcore';
 import { Construct } from 'constructs';
 import { PlatformStack, PlatformStackProps } from './platform-stack';
@@ -76,6 +77,20 @@ export class AgentPlatformStack extends PlatformStack {
       new Observability(this, 'Observability', { config: this.config });
     }
 
+    // Approved guardrail published by the baseline — pinned into the runtime so every model call is
+    // governed (and so the ungoverned-inference deny below does not fail-close the agent).
+    const guardrailEnv: Record<string, string> = {};
+    if (this.config.governance.guardrail.enabled) {
+      guardrailEnv.GUARDRAIL_ID = ssm.StringParameter.valueForStringParameter(
+        this,
+        `${this.paramPrefix}/baseline/guardrail-id`,
+      );
+      guardrailEnv.GUARDRAIL_VERSION = ssm.StringParameter.valueForStringParameter(
+        this,
+        `${this.paramPrefix}/baseline/guardrail-version`,
+      );
+    }
+
     if (ac.runtimeImageUri) {
       this.runtime = new AgentRuntime(this, 'Runtime', {
         config: this.config,
@@ -86,8 +101,21 @@ export class AgentPlatformStack extends PlatformStack {
           GATEWAY_URL: this.gateway.gatewayUrl,
           ...(this.memory ? { MEMORY_ID: this.memory.memoryId } : {}),
           WORKLOAD_IDENTITY_ARN: workloadIdentity.attrWorkloadIdentityArn,
+          ...guardrailEnv,
         },
       });
+
+      // Enforce governance on the runtime role: deny any Bedrock inference that carries no guardrail.
+      // The harness pins the approved guardrail above, so governed calls pass and ungoverned fail.
+      if (this.config.governance.guardrail.enabled && this.config.governance.guardrail.enforceAccountLevel) {
+        const denyArn = ssm.StringParameter.valueForStringParameter(
+          this,
+          `${this.paramPrefix}/baseline/ungoverned-inference-deny-arn`,
+        );
+        this.runtime.role.addManagedPolicy(
+          iam.ManagedPolicy.fromManagedPolicyArn(this, 'UngovernedInferenceDeny', denyArn),
+        );
+      }
     }
 
     // Discovery metadata for the harness, controls stack, and operators.

@@ -21,6 +21,9 @@ app = BedrockAgentCoreApp()
 
 MODEL_ID = os.environ.get("MODEL_ID", "us.anthropic.claude-sonnet-4-5-20250929-v1:0")
 REGION = os.environ.get("AWS_REGION", "us-east-1")
+# Approved guardrail pinned by the platform baseline (passed in by the AgentPlatform stack).
+GUARDRAIL_ID = os.environ.get("GUARDRAIL_ID", "")
+GUARDRAIL_VERSION = os.environ.get("GUARDRAIL_VERSION", "")
 GATEWAY_URL_ENV = os.environ.get("GATEWAY_URL", "")
 GATEWAY_SSM_PARAM = os.environ.get("GATEWAY_SSM_PARAM", "")
 
@@ -64,7 +67,15 @@ def invoke(payload, context=None):
     if not gw:
         return {"error": "gateway URL not available (SSM and env both empty)"}
 
-    model = BedrockModel(model_id=MODEL_ID, region_name=REGION, temperature=0.2)
+    # Apply the approved guardrail/version to every model call. The runtime role denies ungoverned
+    # inference (Null bedrock:GuardrailIdentifier), so the guardrail must be attached here or inference
+    # fails closed — demonstrating that governance is enforced, not merely provisioned.
+    model_kwargs = {"model_id": MODEL_ID, "region_name": REGION, "temperature": 0.2}
+    if GUARDRAIL_ID:
+        model_kwargs["guardrail_id"] = GUARDRAIL_ID
+        if GUARDRAIL_VERSION:
+            model_kwargs["guardrail_version"] = GUARDRAIL_VERSION
+    model = BedrockModel(**model_kwargs)
     mcp_client = MCPClient(lambda: streamablehttp_client(gw, headers={"Authorization": "Bearer %s" % token}))
     with mcp_client:
         tools = mcp_client.list_tools_sync()

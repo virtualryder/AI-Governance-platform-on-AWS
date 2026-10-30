@@ -14,6 +14,7 @@ class _CCF(Exception):
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 os.environ["APPROVALS_TABLE"] = "approvals"
 os.environ["TARGET_ARN"] = "arn:aws:lambda:us-east-1:1:function:submit-tool"
+os.environ["CONSEQUENTIAL_TOOL"] = "submit_service_request"  # platform-pinned tool (review #4)
 
 _path = pathlib.Path(__file__).resolve().parents[2] / "lib" / "lambda" / "hitl-executor" / "index.py"
 _spec = importlib.util.spec_from_file_location("hitl_executor_index", _path)
@@ -131,7 +132,7 @@ def test_transport_failure_after_claim_is_unknown_and_raises():
 
 
 def test_self_approval_is_rejected():
-    # review #3: approver == actor must be refused (separation of duties).
+    # review #3: approver == actor must be refused (defensive self-approval check).
     ddb = _FakeDDB("PENDING")
     executor.ddb = ddb
     executor.lam = _FakeLambda()
@@ -142,3 +143,36 @@ def test_self_approval_is_rejected():
     assert out["executed"] is False
     assert out["status"] == "rejected"
     assert executor.lam.invocations == 0
+    assert ddb.status == "REJECTED"  # the row we just claimed (PENDING) is now terminal REJECTED
+
+
+def test_self_approval_replay_does_not_clobber_terminal_ledger():
+    # review #3b: the self-approval check must NOT overwrite a terminal row on replay. The earlier code
+    # ran the REJECTED write BEFORE the claim, so replaying an already-COMPLETED action with
+    # approver == actor rewrote the ledger to REJECTED (audit corruption). The claim must guard it.
+    ddb = _FakeDDB("COMPLETED")  # action already executed and recorded
+    executor.ddb = ddb
+    executor.lam = _FakeLambda()
+    evt = _event()
+    evt["actor"] = "same-person"
+    evt["approver"] = "same-person"
+    out = executor.handler(evt, None)
+    assert out["status"] == "already_handled"
+    assert out["executed"] is False
+    assert executor.lam.invocations == 0
+    assert ddb.status == "COMPLETED"  # untouched — the prior outcome is preserved
+
+
+def test_refuses_when_consequential_tool_unset_with_target(monkeypatch):
+    # minor review item: with a target configured, an empty CONSEQUENTIAL_TOOL is a misconfiguration —
+    # the executor must refuse, never fall back to the input's action name.
+    monkeypatch.setattr(executor, "CONSEQUENTIAL_TOOL", "")
+    ddb = _FakeDDB("PENDING")
+    executor.ddb = ddb
+    executor.lam = _FakeLambda()
+    out = executor.handler(_event(), None)
+    assert out["status"] == "failed"
+    assert out["executed"] is False
+    assert out["error"] == "consequential_tool_not_configured"
+    assert executor.lam.invocations == 0
+    assert ddb.status == "FAILED"

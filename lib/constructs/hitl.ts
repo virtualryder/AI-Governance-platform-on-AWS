@@ -221,5 +221,12 @@ export class HumanInTheLoop extends Construct {
       description: 'HITL supervisor role - the only principal permitted to resolve approvals.',
     });
     this.approvalFn.grantInvoke(this.approverRole);
+    // The approver must be able to SEE what they are approving. The notification deliberately omits
+    // the action args (review #9), so the approver reads the full proposal (incl. argsJson) from the
+    // approvals ledger by action digest — grant read on the table + decrypt on the CMK, or that claim
+    // in the runbook is hollow (review #9 follow-up). Read-only: the approver resolves the decision via
+    // the approval function (task token), never by writing the ledger directly.
+    this.approvals.grantReadData(this.approverRole);
+    encryptionKey.grantDecrypt(this.approverRole);
   }
 }

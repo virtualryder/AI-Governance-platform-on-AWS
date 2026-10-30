@@ -23,7 +23,8 @@ TABLE = os.environ["APPROVALS_TABLE"]
 TARGET_ARN = os.environ.get("TARGET_ARN", "")
 # The platform-pinned consequential tool name. The executor uses THIS, not event["action"] — the
 # runtime can start an execution with any input, so the tool to invoke must not come from the input
-# (review #4). Falls back to the input action only if unset (legacy).
+# (review #4). If a target is configured but this is unset, the executor REFUSES (never falls back to
+# the input action — review #3 follow-up).
 CONSEQUENTIAL_TOOL = os.environ.get("CONSEQUENTIAL_TOOL", "")
 
 
@@ -32,15 +33,14 @@ def handler(event, _context):
     target = TARGET_ARN
     approver = event.get("approver", "unknown")
     actor = event.get("actor", "")
-    tool = CONSEQUENTIAL_TOOL or event.get("action", "")
+    tool = CONSEQUENTIAL_TOOL
 
-    # Separation of duties (review #3): the approver must not be the actor who proposed the action.
-    if approver and actor and approver == actor:
-        _set_status(digest, "REJECTED", {"executed": False, "error": "self_approval_forbidden", "actor": actor})
-        return {"status": "rejected", "actionDigest": digest, "executed": False, "error": "self_approval_forbidden"}
-
-    # Claim the action: PENDING -> EXECUTING. Fails if it is not PENDING (already executing/completed),
-    # which is the exactly-once / replay guard.
+    # Claim the action FIRST: PENDING -> EXECUTING. This is the exactly-once / replay guard AND it is
+    # the audit ledger's write-guard — EVERY terminal write below happens only on a row we just
+    # claimed. A replay (row already EXECUTING/COMPLETED/REJECTED/UNKNOWN) fails the condition and
+    # returns here WITHOUT rewriting the record, so a prior outcome can never be clobbered (review #3b:
+    # the earlier code did a self-approval REJECTED write BEFORE the claim, which overwrote terminal
+    # rows on replay).
     try:
         ddb.update_item(
             TableName=TABLE,
@@ -57,6 +57,21 @@ def handler(event, _context):
         )
     except ddb.exceptions.ConditionalCheckFailedException:
         return {"status": "already_handled", "actionDigest": digest, "executed": False}
+
+    # Defensive self-approval check (review #3). NOTE: this is NOT yet enforced separation of duties —
+    # `approver` is still free text while `actor` is the Cognito sub, so a determined self-approver can
+    # just type a different name. Authenticated approver identity is a tracked follow-up (REMEDIATION).
+    # It runs AFTER the claim so this REJECTED write lands only on the row we own, never on a replay.
+    if approver and actor and approver == actor:
+        _set_status(digest, "REJECTED", {"executed": False, "error": "self_approval_forbidden", "actor": actor})
+        return {"status": "rejected", "actionDigest": digest, "executed": False, "error": "self_approval_forbidden"}
+
+    # Fail closed if we would invoke but the platform tool name is not pinned: the tool must come from
+    # config, never from the SM input, so an unset CONSEQUENTIAL_TOOL is a misconfiguration, not a
+    # licence to trust event["action"].
+    if target and not tool:
+        _set_status(digest, "FAILED", {"executed": False, "error": "consequential_tool_not_configured"})
+        return {"status": "failed", "actionDigest": digest, "executed": False, "error": "consequential_tool_not_configured"}
 
     # No target configured -> record-only completion (safe no-op, nothing executed).
     if not target:

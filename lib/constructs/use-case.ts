@@ -5,6 +5,7 @@ import * as bac from 'aws-cdk-lib/aws-bedrockagentcore';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
+import { isValidCedarGroupName } from '../config/platform-config';
 
 // js-yaml is present transitively; no @types, so require() keeps it untyped (any).
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -51,6 +52,20 @@ export class UseCase extends Construct {
     const prefix: string = manifest.agent.prefix;
     const reviewerGroup: string = manifest.identity.reviewer_group;
     const toolsDir = path.join(path.dirname(manifestAbs), 'tools');
+
+    // The manifest's group names — not identity.humanAuth.groups — are what actually get interpolated
+    // into the Cedar quoted-token match below, so validate THOSE with the same charset (review #10). A
+    // name with a quote/backslash/wildcard could break out of or widen the match.
+    const manifestGroups = [
+      reviewerGroup,
+      ...(manifest.policies ?? []).map((p: { role_group?: string }) => p.role_group).filter(Boolean),
+    ];
+    for (const grp of manifestGroups)
+      if (!isValidCedarGroupName(grp))
+        throw new Error(
+          `use-case manifest group "${grp}" has invalid characters for a Cedar group token ` +
+            '(allowed: letters, digits, _.@/+=:- and space)',
+        );
 
     // Map each MCP tool name to its target, for Cedar action ids (<target>___<tool>).
     const toolToTarget: Record<string, string> = {};

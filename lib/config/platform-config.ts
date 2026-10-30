@@ -263,6 +263,13 @@ export function loadConfig(configFile: string): PlatformConfig {
   return cfg;
 }
 
+/** A Cognito group name is safe to interpolate into the Cedar quoted-token match only if it contains
+ * no quote/backslash/wildcard. Shared by the config validator and the use-case manifest compiler so
+ * every name that can reach a Cedar policy is checked the same way (review #10). */
+export function isValidCedarGroupName(grp: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9 _.@/+=:-]{0,127}$/.test(grp);
+}
+
 function validate(cfg: PlatformConfig): void {
   const errs: string[] = [];
   if (!/^[a-z0-9-]{2,24}$/.test(cfg.customerName)) errs.push('customerName must be 2-24 chars of a-z, 0-9, -');
@@ -275,9 +282,11 @@ function validate(cfg: PlatformConfig): void {
   if (!cfg.agentcore.allowedModelIds?.length)
     errs.push('agentcore.allowedModelIds must be non-empty (empty would broaden runtime inference to all models)');
   // Group names flow into the Cedar quoted-token match; a name containing a quote/backslash/wildcard
-  // could break or widen it. Restrict to safe characters (review #10).
+  // could break or widen it. Restrict to safe characters (review #10). The SAME check is applied to
+  // the manifest-derived reviewer_group/role_group where they are compiled into Cedar (use-case.ts) —
+  // those, not identity.humanAuth.groups, are the names that actually reach a policy.
   for (const grp of cfg.identity?.humanAuth?.groups ?? [])
-    if (!/^[A-Za-z0-9][A-Za-z0-9 _.@/+=:-]{0,127}$/.test(grp))
+    if (!isValidCedarGroupName(grp))
       errs.push(`identity.humanAuth group "${grp}" has invalid characters (allowed: letters, digits, _.@/+=:- and space)`);
   const net = cfg.agentcore.network;
   if (net?.mode === 'VPC' && (!net.subnetIds?.length || !net.securityGroupIds?.length))

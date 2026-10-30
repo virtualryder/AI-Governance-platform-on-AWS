@@ -27,7 +27,7 @@ verified); the live acceptance run is the second operator's.
 |---|---|---|
 | 1 | Runtime role granted `application-inference-profile/*` account-wide — an app profile can wrap any model, bypassing `allowedModelIds` | Removed the wildcard; only explicit `agentcore.allowedApplicationInferenceProfileArns` are granted (default none) |
 | 2 | Guardrail deny was `Null:{GuardrailIdentifier}` only — any guardrail satisfied it | Added a `DenyUnapprovedGuardrail` statement: `StringNotEquals bedrock:GuardrailIdentifier` against the approved id / ARN / ARN:version (needs live validation of the exact value form) |
-| 3 | HITL approver was self-asserted free text | Executor refuses `approver == actor` (separation of duties); approval invoke already restricted to the supervisor role; full authenticated-approver identity (API GW authorizer) noted as a follow-up |
+| 3 | HITL approver was self-asserted free text | Executor refuses `approver == actor` as a **defensive check only** — this is NOT yet enforced separation of duties (`approver` is free text; `actor` is the Cognito sub, so a self-approver can type a different name). Approval invoke is restricted to the supervisor role; full authenticated-approver identity (API GW authorizer) is a tracked follow-up |
 | 4 | Executor trusted the tool name from its input | Executor uses the platform-pinned `CONSEQUENTIAL_TOOL` (published from the manifest), not the input action |
 | 5 | A failed/stuck executor still ended the state machine as Succeeded | Added a Choice on `$.execution.Payload.status == completed` (else Fail) and a Catch on the Execute task (timeout/error → Fail; ledger UNKNOWN is the reconciliation anchor) |
 | 6 | `render.py` still emitted the lookalike-vulnerable `like "*grp*"` permit | render.py now emits the quoted-token permit `*"grp"*` (matches the CDK path) |
@@ -36,10 +36,22 @@ verified); the live acceptance run is the second operator's.
 | 9 | Approval SNS message carried the action args (PHI/CJIS to a distribution list) | Args removed from the notification; approver reviews the full proposal in the ledger by digest |
 | 10 | Group names flowed into Cedar unescaped (a quote could defeat the match) | Config loader validates `identity.humanAuth.groups` against a safe character set |
 
-**Still open (acknowledged):** fully authenticated approver identity (vs role-gated + self-approval
-check), real-backend idempotency/reconciliation, and the live acceptance run itself — which, per the
-reviewer, must be a **different account** and a **genuinely separate operator** to count as *release
-accepted*.
+### Third-review follow-up (commit pending, 29 Oct 2026)
+
+The reviewer re-ran the local gate against the above and found a **new bug introduced by fix #3** plus
+three loose ends. All fixed:
+
+| Finding | Fix |
+|---|---|
+| **#3b (audit corruption)** — the self-approval check ran *before* the exactly-once claim and its REJECTED write was unconditional, so replaying an already-COMPLETED action with `approver == actor` rewrote the ledger row to REJECTED | The claim (`PENDING -> EXECUTING`) now runs **first** and is the ledger's write-guard: every terminal write lands only on a row we just claimed; a replay fails the condition and returns `already_handled` without touching the record. Self-approval is checked *after* the claim. Regression test added (`test_self_approval_replay_does_not_clobber_terminal_ledger`) |
+| **#9 follow-up** — docs said the approver reviews args in the ledger, but the approver role could only invoke the approval Lambda, not read the approvals table | Granted the approver role `grantReadData` on the approvals table + `grantDecrypt` on the CMK (read-only; the decision is still resolved via the task-token function) |
+| **#10 follow-up** — the loader validated `identity.humanAuth.groups`, but the names actually compiled into Cedar come from the manifest (`reviewer_group`/`role_group`) | Exported `isValidCedarGroupName`; the use-case manifest compiler now validates `reviewer_group` and every `role_group` with the same charset (throws at synth on a bad name) |
+| **minor** — the executor fell back to the input's `action` name when `CONSEQUENTIAL_TOOL` was empty | With a target configured, an empty `CONSEQUENTIAL_TOOL` is now a hard refusal (`consequential_tool_not_configured`), never a fallback to the input |
+
+**Still open (acknowledged):** fully authenticated approver identity — the self-approval check is
+**defensive only, not enforced separation of duties** — real-backend idempotency/reconciliation, and
+the live acceptance run itself, which per the reviewer must be a **different account** than the
+personal test account and a **genuinely separate operator** to count as *release accepted*.
 
 ---
 

@@ -79,16 +79,20 @@ Copy `config/platform.example.json` to `config/<customer>.json` for each custome
 ## Maturity
 
 This is a **governance accelerator undergoing a defined hardening + validation phase** — not a
-production-certified, four-mode product. Two independent readiness reviews (29 Oct 2026) drove the
+production-certified, four-mode product. Four independent readiness reviews (29–30 Oct 2026) drove the
 current state; their findings and fixes are tracked in [`docs/REMEDIATION.md`](docs/REMEDIATION.md).
 
-> **Current status:** both reviews' findings are remediated in code. The **standalone** mode is
-> **live-verified** end to end against real AWS (authorized/unauthorized/lookalike access, guarded
-> inference, HITL approve + reject + replay, kill-switch engage/release) — the remaining step to
-> *release accepted* is a second-operator reproduction of the §15 acceptance gate. Hub/spoke, org, and
-> optional A2A/VPC/Memory/Omni are **built + verified but not yet live-validated** (they need
-> multi-account / VPC / second-agent environments). Not production-ready, not "exactly-once", not fully
-> A2A-enabled on current evidence.
+> **Current status:** all four reviews' findings are remediated in code, and the fourth review assessed
+> the standalone MVP as an **acceptance-ready candidate** (after corrections now applied: build-first
+> image gate, approval-Lambda audit capture, a fail-closed executor backend contract, guardrail-version
+> republish, and executable failure-path acceptance steps). The **standalone** mode is **live-verified**
+> end to end against real AWS (authorized/unauthorized/lookalike access, guarded inference, HITL approve
+> + reject + replay, kill-switch engage/release) — the remaining step to *release accepted* is a
+> **second operator** running the §15 gate (incl. the §15b failure paths) in a **different account**.
+> Hub/spoke, org, and optional A2A/VPC/Memory/Omni are **built + verified but not yet live-validated**.
+> Explicit MVP exclusions (authenticated approver identity, real-backend idempotency, shared-account
+> logging restoration, multi-agent A2A, multi-account) are limitations by design — see REMEDIATION.
+> Not production-ready, not "exactly-once", not fully A2A-enabled on current evidence.
 Rather than a blanket "all addressed", each capability carries one of four honest labels:
 
 - **implemented** — code exists, builds, `cdk-nag`-clean.
@@ -120,7 +124,7 @@ infrastructure exists. Per-capability detail:
 
 | Capability | Status | Notes |
 |---|---|---|
-| CDK build / 4-mode synth / cdk-nag | **Live-tested** (local) | 43 jest + 20 pytest green; nag clean ×4 modes |
+| CDK build / 4-mode synth / cdk-nag | **Live-tested** (local) | 48 jest + 28 pytest green; nag clean ×4 modes |
 | Standalone foundation (baseline + platform + controls) | **Live-tested** (2026-10-29) | deployed to a real account; enforcing Cedar, guardrail pinned to runtime, HITL end-to-end, safe logging ownership — all exercised live |
 | citizen-311 governed workflow | **Live-validated** (post-fix) | full workflow run in-account: authorized/denied/approved/kill-switch all pass — see `docs/REMEDIATION.md` Gate 2 |
 | Kill switch / guardrail enforcement / interceptor | **Live-tested + unit-tested** | engage→block→release→restore verified live; behavioral pytest for kill-switch + interceptor + HITL executor + logging ownership |

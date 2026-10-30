@@ -94,13 +94,30 @@ def handler(event, _context):
         _set_status(digest, "UNKNOWN", {"executed": False, "error": "invoke_transport_failure", "detail": str(exc)[:300]})
         raise RuntimeError("HITL executor transport failure; outcome UNKNOWN (reconcile via backend idempotency key %s)" % digest)
 
-    # Distinguish invocation transport from function success: a Lambda FunctionError (or an
-    # application-level error in the tool's result) means the business action did NOT succeed (B3b).
-    body = resp.get("Payload")
-    payload = json.loads(body.read() or b"{}") if body else {}
+    # --- Backend success contract (fail closed) -------------------------------------------------
+    # The target tool Lambda MUST return a JSON object that signals success POSITIVELY with top-level
+    # "ok": true (and MAY include a result). Failure is "ok": false or an error-indicator key. The
+    # executor marks COMPLETED ONLY on a positive success signal — never on the mere absence of a
+    # recognized error (review #4a: an unrecognized error shape, e.g. {"errorMessage": ...} with no
+    # FunctionError, or {"statusCode": 500}, was previously marked successful). Anything it cannot
+    # positively classify is UNKNOWN and reconcilable via the idempotency key (the action digest); it
+    # never guesses success. Malformed/non-JSON responses are UNKNOWN too, not an uncaught crash that
+    # would strand the row at EXECUTING (review #4b).
     function_error = resp.get("FunctionError")
-    app_error = isinstance(payload, dict) and payload.get("error")
-    if function_error or app_error:
+    try:
+        body = resp.get("Payload")
+        raw = body.read() if body is not None else b""
+        payload = json.loads(raw or b"{}")
+    except (ValueError, TypeError, AttributeError) as exc:
+        _set_status(digest, "UNKNOWN", {"executed": False, "error": "unparseable_response", "detail": str(exc)[:300]})
+        raise RuntimeError(
+            "HITL executor got an unparseable backend response; outcome UNKNOWN "
+            "(reconcile via idempotency key %s)" % digest
+        )
+
+    # Explicit failure: the function raised (FunctionError), or returned ok:false, or carries an
+    # error-indicator key. The action did NOT succeed.
+    if function_error or (isinstance(payload, dict) and (payload.get("ok") is False or _has_error_indicator(payload))):
         _set_status(digest, "FAILED", {"executed": False, "functionError": function_error, "payload": payload})
         return {
             "status": "failed",
@@ -111,8 +128,28 @@ def handler(event, _context):
             "payload": payload,
         }
 
-    _set_status(digest, "COMPLETED", {"executed": True, "payload": payload})
-    return {"status": "completed", "actionDigest": digest, "approver": approver, "executed": True, "payload": payload}
+    # Positive success: a JSON object with ok:true and no error indicator.
+    if isinstance(payload, dict) and payload.get("ok") is True and not _has_error_indicator(payload):
+        _set_status(digest, "COMPLETED", {"executed": True, "payload": payload})
+        return {"status": "completed", "actionDigest": digest, "approver": approver, "executed": True, "payload": payload}
+
+    # Ambiguous: a response we cannot classify as success OR failure (no "ok", unexpected shape). Fail
+    # CLOSED to UNKNOWN and raise — reporting COMPLETED here is exactly the false-success defect (#4a).
+    _set_status(digest, "UNKNOWN", {"executed": False, "error": "unrecognized_response_shape", "payload": payload})
+    raise RuntimeError(
+        "HITL executor got an unrecognized backend response (no positive success signal); outcome "
+        "UNKNOWN (reconcile via idempotency key %s)" % digest
+    )
+
+
+# Keys any of which, if present in the tool response, mean the action did not cleanly succeed. A Lambda
+# that RAISES yields {"errorMessage","errorType","stackTrace"} + FunctionError; a handled error may
+# return {"error": ...}. Either way we do not treat the response as success.
+_ERROR_INDICATOR_KEYS = ("error", "errorMessage", "errorType")
+
+
+def _has_error_indicator(payload):
+    return any(k in payload for k in _ERROR_INDICATOR_KEYS)
 
 
 def _set_status(digest, status, result):

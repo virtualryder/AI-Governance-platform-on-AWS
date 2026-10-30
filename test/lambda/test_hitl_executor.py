@@ -42,18 +42,34 @@ class _FakeDDB:
             self.status = ExpressionAttributeValues[":s"]["S"]
 
 
+def _resp(body_bytes, function_error=None):
+    class _Body:
+        def read(self_inner):
+            return body_bytes
+
+    r = {"Payload": _Body()}
+    if function_error:
+        r["FunctionError"] = function_error
+    return r
+
+
 class _FakeLambda:
+    """Backend that honours the contract: positive success via ok:true."""
     def __init__(self):
         self.invocations = 0
 
     def invoke(self, FunctionName, Payload, **kwargs):
         self.invocations += 1
+        return _resp(b'{"ok": true, "result": "filed", "ref": "SR-1"}')
 
-        class _Body:
-            def read(self_inner):
-                return b'{"result": "filed", "ref": "SR-1"}'
 
-        return {"Payload": _Body()}
+class _ConstLambda:
+    """Backend returning a fixed raw body (and optional FunctionError), to probe the contract."""
+    def __init__(self, body_bytes, function_error=None):
+        self._body, self._fe = body_bytes, function_error
+
+    def invoke(self, FunctionName, Payload, **kwargs):
+        return _resp(self._body, self._fe)
 
 
 def _event():
@@ -176,3 +192,59 @@ def test_refuses_when_consequential_tool_unset_with_target(monkeypatch):
     assert out["error"] == "consequential_tool_not_configured"
     assert executor.lam.invocations == 0
     assert ddb.status == "FAILED"
+
+
+def test_error_shape_without_function_error_is_failed():
+    # review #4a: an error-shaped response WITHOUT a Lambda FunctionError (the function returned, not
+    # raised) must be FAILED, never COMPLETED. This is the false-success path the reviewer reproduced.
+    ddb = _FakeDDB("PENDING")
+    executor.ddb = ddb
+    executor.lam = _ConstLambda(b'{"errorMessage": "backend rejected the request"}')  # no FunctionError
+    out = executor.handler(_event(), None)
+    assert out["status"] == "failed"
+    assert out["executed"] is False
+    assert ddb.status == "FAILED"
+
+
+def test_ok_false_is_failed():
+    ddb = _FakeDDB("PENDING")
+    executor.ddb = ddb
+    executor.lam = _ConstLambda(b'{"ok": false, "error": "duplicate"}')
+    out = executor.handler(_event(), None)
+    assert out["status"] == "failed"
+    assert out["executed"] is False
+    assert ddb.status == "FAILED"
+
+
+def test_unrecognized_shape_is_unknown_not_completed():
+    # review #4a: a response with no positive success signal (no ok:true) must NOT be COMPLETED. Fail
+    # closed to UNKNOWN (reconcilable) and raise so the state machine surfaces it.
+    import pytest
+    ddb = _FakeDDB("PENDING")
+    executor.ddb = ddb
+    executor.lam = _ConstLambda(b'{"result": "maybe", "status": "submitted"}')  # no ok:true
+    with pytest.raises(RuntimeError):
+        executor.handler(_event(), None)
+    assert ddb.status == "UNKNOWN"
+
+
+def test_malformed_json_is_unknown_not_executing():
+    # review #4b: a malformed/non-JSON response must land the row at UNKNOWN (reconcilable), not leave
+    # it stuck at EXECUTING because the parse crashed uncaught.
+    import pytest
+    ddb = _FakeDDB("PENDING")
+    executor.ddb = ddb
+    executor.lam = _ConstLambda(b'<html>502 Bad Gateway</html>')
+    with pytest.raises(RuntimeError):
+        executor.handler(_event(), None)
+    assert ddb.status == "UNKNOWN"
+
+
+def test_ok_true_executes():
+    ddb = _FakeDDB("PENDING")
+    executor.ddb = ddb
+    executor.lam = _ConstLambda(b'{"ok": true, "request_id": "SR-DEMO-0001"}')
+    out = executor.handler(_event(), None)
+    assert out["status"] == "completed"
+    assert out["executed"] is True
+    assert ddb.status == "COMPLETED"

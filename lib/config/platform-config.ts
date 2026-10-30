@@ -263,6 +263,24 @@ export function loadConfig(configFile: string): PlatformConfig {
   return cfg;
 }
 
+/** The sentinel left in the example profile until an operator builds the image and pastes its digest.
+ * It is a valid-looking string, so a naive `if (runtimeImageUri)` gate would emit it straight into the
+ * Runtime resource and fail the deploy (review #4/F1). */
+export const RUNTIME_IMAGE_PLACEHOLDER = 'REPLACE_WITH_ECR_DIGEST_URI';
+
+/** Gate predicate for the Runtime: is there a REAL image to deploy for, i.e. set and not the
+ * placeholder sentinel? The Runtime is gated on this so a `deploy --all` with the placeholder brings
+ * up governance + platform WITHOUT a broken Runtime; set the digest and redeploy to activate it. The
+ * stricter "must be an immutable digest" rule is enforced at config-load by {@link validate}, so this
+ * gate stays permissive (a bad value is rejected before it reaches here on a real deploy). */
+export function isDeployableImageUri(uri?: string): uri is string {
+  return !!uri && uri !== RUNTIME_IMAGE_PLACEHOLDER;
+}
+
+/** A deployable runtime image must be pinned to an immutable digest (`…@sha256:<64 hex>`), never a
+ * mutable tag. Enforced by the config validator. */
+const RUNTIME_IMAGE_DIGEST_RE = /@sha256:[0-9a-f]{64}$/;
+
 /** A Cognito group name is safe to interpolate into the Cedar quoted-token match only if it contains
  * no quote/backslash/wildcard. Shared by the config validator and the use-case manifest compiler so
  * every name that can reach a Cedar policy is checked the same way (review #10). */
@@ -281,6 +299,22 @@ function validate(cfg: PlatformConfig): void {
   // Fail closed: an empty model allowlist must NOT fall through to a broad foundation-model/* grant.
   if (!cfg.agentcore.allowedModelIds?.length)
     errs.push('agentcore.allowedModelIds must be non-empty (empty would broaden runtime inference to all models)');
+  // Runtime image: the placeholder means "no Runtime this phase" (deploy governance first, then build
+  // the image and redeploy). A set-but-non-digest value is almost always a mistake (a mutable tag) —
+  // reject it so a deploy can't pin to a moving tag; require the immutable `…@sha256:…` digest.
+  const img = cfg.agentcore.runtimeImageUri;
+  if (img && img !== RUNTIME_IMAGE_PLACEHOLDER && !RUNTIME_IMAGE_DIGEST_RE.test(img))
+    errs.push(
+      `agentcore.runtimeImageUri must be an immutable digest URI (…@sha256:…), not a tag. ` +
+        `Got "${img}". Build the image (use-cases/_harness/build-image.sh prints IMAGE_DIGEST_URI) and paste that.`,
+    );
+  if (img === RUNTIME_IMAGE_PLACEHOLDER)
+    // eslint-disable-next-line no-console
+    console.warn(
+      '[config] agentcore.runtimeImageUri is still the placeholder — the AgentCore Runtime will be ' +
+        'SKIPPED this deploy (governance + platform only). Build the image, set the digest, and ' +
+        'redeploy to activate the Runtime. See docs/runbooks/DEPLOYMENT.md §12b.',
+    );
   // Group names flow into the Cedar quoted-token match; a name containing a quote/backslash/wildcard
   // could break or widen it. Restrict to safe characters (review #10). The SAME check is applied to
   // the manifest-derived reviewer_group/role_group where they are compiled into Cedar (use-case.ts) —

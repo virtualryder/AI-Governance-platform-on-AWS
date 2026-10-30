@@ -1,7 +1,8 @@
 # Readiness-review remediation (findings → fixes)
 
-**Final status (two reviews + live re-validation).** All findings from both reviews are remediated in
-code (43 jest + 20 pytest green; cdk-nag clean across standalone/spoke/hub/org). Validation maturity:
+**Final status (four reviews + live re-validation).** All findings from all four reviews are
+remediated in code (48 jest + 28 pytest green; cdk-nag clean across standalone/spoke/hub/org).
+Validation maturity:
 
 - **Standalone** — **live verified** post-fix in a real account (acceptance matrix below): authorized /
   unauthorized / lookalike access, guarded inference, HITL approve + reject + replay, kill-switch
@@ -9,11 +10,50 @@ code (43 jest + 20 pytest green; cdk-nag clean across standalone/spoke/hub/org).
   second-operator run of the §15 gate.
 - **Hub/spoke, Org, optional (A2A / VPC / Memory / Omni)** — **built + synth/nag/test-verified**, not
   yet live-validated (need multi-account / test-OU / VPC / second-agent / Omni-domain environments).
-- **Not live-exercised anywhere (unit-tested only):** executor FunctionError→FAILED and
-  transport→UNKNOWN, kill-switch CREATE_FAILED→not-engaged, expired/wrong-client tokens.
+- **Not live-exercised anywhere (unit-tested only):** executor backend contract (ok:true→COMPLETED,
+  FunctionError/ok:false→FAILED, malformed/unrecognized→UNKNOWN), kill-switch CREATE_FAILED→not-
+  engaged, guardrail-version republish on content change, expired/wrong-client tokens. §15b gives the
+  executable procedures for the second operator to exercise these live.
 
 Avoid describing the platform as production-ready, universally deployable, exactly-once, or fully
 A2A-enabled on the current evidence.
+
+---
+
+## Fourth review (commit pending, 30 Oct 2026) — MVP acceptance-candidate fixes
+
+A fourth independent review (clean checkout; TS build + 28 pytest + jest/synth/nag all pass, Docker-
+dependent kill-switch bundling excluded in their env) recommended **proceeding to a controlled MVP
+acceptance deployment after a few corrections**. All five remaining priorities fixed; locally verified
+(48 jest + 28 pytest, cdk-nag 0 across standalone/spoke/hub/org).
+
+| # | Finding (validated against source) | Fix |
+|---|---|---|
+| F1 | The §12b walkthrough deployed before building the image; `runtimeImageUri` is the placeholder `REPLACE_WITH_ECR_DIGEST_URI`, which the `if (ac.runtimeImageUri)` gate (truthy string) emitted straight into the Runtime → deploy fails | Gate the Runtime on a REAL image (`isDeployableImageUri` excludes the placeholder), so a `deploy --all` with the placeholder brings up governance + platform and **skips** the Runtime. Config validator now requires an immutable digest (`…@sha256:…`), rejects a mutable tag, and warns on the placeholder. Runbook §12b reordered to build-image-first (single deploy) with the two-phase alternative documented |
+| F2 | Approval auditing incomplete: the approver name is caller-supplied, AND the CloudTrail selectors didn't capture the approval **Lambda invoke** (a data event), so the claimed approval audit rested only on the AssumeRole management event | Named the approval function deterministically (`govai-<cust>-<env>-hitl-approval`) and added a scoped `AWS::Lambda::Function` data-event selector for it. Approver **identity** remains caller-supplied — now an **explicit MVP exclusion** (see below), not a claimed control |
+| F3 | The acceptance procedure lacked executable failure tests, and trace expectations didn't match the minimal profile (which disables observability) | Added §15a (where evidence lives when `enableObservability:false` — ledgers + Step Functions history + CloudTrail, **not** X-Ray) and §15b (executable procedures for backend error → FAILED, uncertain → UNKNOWN, missing guardrail, wrong guardrail, kill-switch fail-closed) |
+| F4 | Executor recovery had no defined backend contract: an unrecognized error response (`{"errorMessage":…}` with no FunctionError) was marked **successful**, and malformed JSON crashed uncaught, leaving the ledger stuck at `EXECUTING` | Defined a **positive, fail-closed contract**: COMPLETED only on `ok:true` + no error indicator; `FunctionError`/`ok:false`/error-key → FAILED; malformed/unrecognized → UNKNOWN + raise (reconcilable via idempotency key, never stuck EXECUTING, never a false success). citizen-311 submit tool emits `ok:true`. 5 new pytest reproduce the reviewer's two cases |
+| F5 | Editing guardrail content changed the `CfnGuardrail` but left `CfnGuardrailVersion` unchanged, so enforcement pinned to `:${attrVersion}` would enforce **stale** content | Embedded a content hash in the version description; both version props are create-only, so a content change now REPLACES the version (mints a fresh numeric version). Jest asserts the hash is present |
+
+### Explicit MVP exclusions (NOT fixed — out of first-release scope, by design)
+
+These are deliberately **excluded** from the standalone MVP and must be presented as limitations, not
+gaps that were closed:
+
+- **Authenticated approver identity.** The HITL approver name is caller-supplied; the executor's
+  `approver == actor` refusal is a *defensive check*, not enforced separation of duties. Approval
+  authority is gated to a dedicated supervisor role (CloudTrail records the AssumeRole + the scoped
+  approval-Lambda invoke), but binding the approver to an authenticated principal (e.g. an API Gateway
+  authorizer) is a follow-up.
+- **Real-backend idempotency / reconciliation.** The executor passes a stable idempotency key and
+  marks UNKNOWN on ambiguity, but a true exactly-once guarantee depends on the integrated system of
+  record honoring that key. Not provided by the reference svc311 tool.
+- **Shared-account invocation-logging restoration.** `adopt`/`create` ownership preserves a pre-
+  existing config through deploy/destroy for the account the platform owns; general restoration across
+  an org-shared logging config is out of scope.
+- **Multi-agent A2A.** IAM scaffolding only — not an orchestrated collaboration.
+- **Multi-account (hub/spoke, org).** Built and synth/nag/test-verified; not part of the single-
+  account MVP acceptance and not live-validated.
 
 ---
 

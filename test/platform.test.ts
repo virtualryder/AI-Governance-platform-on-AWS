@@ -75,10 +75,29 @@ test('CloudTrail captures AgentCore data events via advanced selectors', () => {
   expect(types).toContain('AWS::BedrockAgentCore::Runtime');
 });
 
+test('audit trail captures the HITL approval Lambda invoke as a data event (review #2)', () => {
+  const t = baselineTemplate();
+  // A dedicated Lambda data-event selector exists, scoped by ARN prefix to the hitl-approval function
+  // (the ARN is an Fn::Join, so assert on the serialized selector rather than a literal string match).
+  const trails = t.findResources('AWS::CloudTrail::Trail');
+  const selectors = Object.values(trails)[0].Properties.AdvancedEventSelectors as any[];
+  const lambdaSel = selectors.find((s) =>
+    s.FieldSelectors.some((f: any) => f.Field === 'resources.type' && f.Equals?.[0] === 'AWS::Lambda::Function'),
+  );
+  expect(lambdaSel).toBeDefined();
+  expect(JSON.stringify(lambdaSel)).toContain('hitl-approval');
+  expect(lambdaSel.FieldSelectors.some((f: any) => f.Field === 'resources.ARN' && f.StartsWith)).toBe(true);
+});
+
 test('guardrail is versioned and ungoverned inference is denied', () => {
   const t = baselineTemplate();
   t.resourceCountIs('AWS::Bedrock::Guardrail', 1);
   t.resourceCountIs('AWS::Bedrock::GuardrailVersion', 1);
+  // The version description carries a content hash so editing guardrail content mints a NEW version
+  // (both version props are create-only → replacement) rather than enforcing stale content (review #5).
+  t.hasResourceProperties('AWS::Bedrock::GuardrailVersion', {
+    Description: Match.stringLikeRegexp('content [0-9a-f]{16}'),
+  });
   // The Null-condition deny on bedrock:GuardrailIdentifier is the enforcement artefact.
   t.hasResourceProperties('AWS::IAM::ManagedPolicy', {
     PolicyDocument: {
@@ -168,6 +187,13 @@ test('agent platform: runtime + endpoint only when an image is configured', () =
   const without = agentPlatformTemplate();
   without.resourceCountIs('AWS::BedrockAgentCore::Runtime', 0);
   without.resourceCountIs('AWS::BedrockAgentCore::RuntimeEndpoint', 0);
+
+  // The example profile ships the placeholder digest; it must gate the Runtime OFF (not emit the
+  // placeholder string into the resource and fail the deploy — review #4/F1).
+  const placeholder = agentPlatformTemplate((c) => {
+    c.agentcore.runtimeImageUri = 'REPLACE_WITH_ECR_DIGEST_URI';
+  });
+  placeholder.resourceCountIs('AWS::BedrockAgentCore::Runtime', 0);
 
   const withImage = agentPlatformTemplate((c) => {
     c.agentcore.runtimeImageUri = '111111111111.dkr.ecr.us-east-1.amazonaws.com/agent:latest';

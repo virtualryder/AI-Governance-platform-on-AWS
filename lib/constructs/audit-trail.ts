@@ -95,6 +95,24 @@ export class AuditTrail extends Construct {
           ],
         });
       }
+
+      // The HITL approval is performed by invoking the approval Lambda — an AWS::Lambda::Function DATA
+      // event, which the management-event selector does NOT capture. Without this, the approval-audit
+      // story rests only on the AssumeRole (management) event, not the invoke itself (review #2). Scope
+      // the selector to the deterministically-named approval function so we capture that invoke WITHOUT
+      // logging (and paying for) every Lambda data event in the account. Matched by ARN prefix so a
+      // version/alias qualifier still matches. Only added when HITL is deployed.
+      if (config.controls.humanInTheLoop) {
+        const approvalFnArn = `arn:${stack.partition}:lambda:${stack.region}:${stack.account}:function:govai-${config.customerName}-${config.environment}-hitl-approval`;
+        selectors.push({
+          name: 'Data events: HITL approval Lambda',
+          fieldSelectors: [
+            { field: 'eventCategory', equalTo: ['Data'] },
+            { field: 'resources.type', equalTo: ['AWS::Lambda::Function'] },
+            { field: 'resources.ARN', startsWith: [approvalFnArn] },
+          ],
+        });
+      }
     }
 
     // Swap the L2's (empty) basic EventSelectors for advanced ones — CloudFormation forbids both.

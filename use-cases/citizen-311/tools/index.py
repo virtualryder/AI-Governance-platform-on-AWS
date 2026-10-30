@@ -40,7 +40,9 @@ def handler(event, context):
     if tool.endswith("check_duplicate"):
         return {"duplicate": False, "open_request_id": None}
     if tool.endswith("submit_service_request"):
-        # Reached only via the human sign-off gate (Cedar forbids the agent from calling this).
-        return {"request_id": "SR-DEMO-0001", "status": "submitted", "category": args.get("category")}
+        # Reached only via the human sign-off gate (Cedar forbids the agent from calling this). This is
+        # the consequential target the HITL executor invokes, so it must honour the executor's backend
+        # contract: signal success POSITIVELY with "ok": true (absence of an error is NOT success).
+        return {"ok": True, "request_id": "SR-DEMO-0001", "status": "submitted", "category": args.get("category")}
 
-    return {"error": "unknown tool", "tool": tool}
+    return {"ok": False, "error": "unknown tool", "tool": tool}

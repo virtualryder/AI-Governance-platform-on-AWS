@@ -4,6 +4,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as bac from 'aws-cdk-lib/aws-bedrockagentcore';
 import { Construct } from 'constructs';
 import { PlatformStack, PlatformStackProps } from './platform-stack';
+import { isDeployableImageUri } from '../config/platform-config';
 import { InboundIdentity } from '../constructs/identity';
 import { AgentGateway } from '../constructs/agent-gateway';
 import { AgentMemory } from '../constructs/agent-memory';
@@ -100,12 +101,17 @@ export class AgentPlatformStack extends PlatformStack {
       );
     }
 
-    if (ac.runtimeImageUri) {
+    // Gate on a REAL image, not merely a truthy string: the example profile ships a placeholder, so a
+    // bare `if (ac.runtimeImageUri)` would emit the placeholder into the Runtime and fail the deploy
+    // (review #4/F1). With the placeholder, this stack deploys governance + platform (gateway, Cedar,
+    // identity) and skips the Runtime; set the digest and redeploy to activate it.
+    const imageUri = ac.runtimeImageUri;
+    if (isDeployableImageUri(imageUri)) {
       this.runtime = new AgentRuntime(this, 'Runtime', {
         config: this.config,
         identity: this.identity,
         kmsKeyArn,
-        imageUri: ac.runtimeImageUri,
+        imageUri,
         environment: {
           GATEWAY_URL: this.gateway.gatewayUrl,
           ...(this.memory ? { MEMORY_ID: this.memory.memoryId } : {}),

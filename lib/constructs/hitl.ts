@@ -203,6 +203,10 @@ export class HumanInTheLoop extends Construct {
     encryptionKey.grantEncryptDecrypt(this.stateMachine.role);
 
     this.approvalFn = new lambda.Function(this, 'ApprovalFn', {
+      // Deterministic name so the baseline CloudTrail can scope a Lambda data-event selector to this
+      // exact function ARN (review #2) — the approver's InvokeFunction is a DATA event, not captured
+      // by the management-event selector, so without this the approval action itself is unaudited.
+      functionName: `govai-${config.customerName}-${config.environment}-hitl-approval`,
       runtime: lambda.Runtime.PYTHON_3_13,
       handler: 'index.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '..', 'lambda', 'hitl-approval')),

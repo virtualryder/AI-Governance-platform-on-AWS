@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { Stack } from 'aws-cdk-lib';
 import * as bedrock from 'aws-cdk-lib/aws-bedrock';
 import * as iam from 'aws-cdk-lib/aws-iam';
@@ -75,10 +76,29 @@ export class PlatformGuardrail extends Construct {
         : undefined,
     });
 
-    // Immutable snapshot of the current configuration.
+    // Immutable snapshot of the current configuration. CfnGuardrailVersion has only two properties
+    // (guardrailIdentifier, description) and BOTH are create-only — CloudFormation REPLACES the
+    // resource (minting a NEW numeric version) when either changes. A static description therefore
+    // pins the FIRST version forever: editing guardrail content updates the CfnGuardrail but leaves
+    // this version — and anything enforcing `:${attrVersion}` — on stale content (review #5). We embed
+    // a hash of the guardrail content in the description so any content change rolls a fresh version.
+    const contentHash = createHash('sha256')
+      .update(
+        JSON.stringify({
+          contentPolicyConfig,
+          sensitiveInformationPolicyConfig: piiEntitiesConfig,
+          topicPolicyConfig: g.deniedTopics,
+          blockedMessage: g.blockedMessage,
+        }),
+      )
+      .digest('hex')
+      .slice(0, 16);
     this.version = new bedrock.CfnGuardrailVersion(this, 'Version', {
       guardrailIdentifier: this.guardrail.attrGuardrailId,
-      description: 'Baseline version pinned by platform enforcement.',
+      // The hash makes this description (and thus the version) change with content, forcing a new
+      // version. Do NOT remove the hash to "freeze" a version — editing content would then silently
+      // enforce the old content.
+      description: `Baseline version pinned by platform enforcement (content ${contentHash}).`,
     });
     this.guardrailId = this.guardrail.attrGuardrailId;
 

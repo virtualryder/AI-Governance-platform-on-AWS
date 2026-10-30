@@ -346,8 +346,14 @@ Expired tokens, wrong-client tokens, and users with no group must be denied at t
 Do this end to end before telling a customer standalone is ready. Every step has an expected result.
 
 Start from the dedicated minimal profile — `cp config/standalone.example.json config/<customer>.json`,
-set `region` and (after step 3) `agentcore.runtimeImageUri` to the image digest. It has no hub/org and
-optional capabilities off, so standalone synthesizes with no external OAM link or remote replication.
+set `region`. It has no hub/org and optional capabilities off, so standalone synthesizes with no
+external OAM link or remote replication.
+
+**Build the image BEFORE deploying.** The profile ships `runtimeImageUri:
+"REPLACE_WITH_ECR_DIGEST_URI"`. The Runtime is gated on a real, digest-pinned image, so until you set
+a real digest the Runtime is simply **skipped** and the rest of the platform deploys cleanly. Build
+the image, paste its digest, then deploy once — the Runtime comes up on that single deploy. (`build-
+image.sh` creates its own ECR repo, so you do NOT need a prior CDK deploy to build.)
 
 ```bash
 # 0. (one-time) Python test deps
@@ -357,16 +363,24 @@ python -m pip install -r requirements-dev.txt
 npm ci && npm run build && npm test && npm run test:lambda
 npx cdk synth --quiet -c mode=standalone -c configFile=config/<customer>.json -c nag=true --profile <p>
 
-# 2. Bootstrap + deploy (review the diff first)
+# 2. Bootstrap the account/region for CDK assets
 npx cdk bootstrap aws://<account>/<r> --profile <p>
+
+# 3. Build + publish the ARM64 image by DIGEST (self-creates the ECR repo), then paste the digest
+./use-cases/_harness/build-image.sh --profile <p> --region <r> --repo govai-<customer> --tag v1
+#   -> copy the printed IMAGE_DIGEST_URI (…@sha256:…) into config.agentcore.runtimeImageUri
+
+# 4. Deploy once — the Runtime activates because the digest is now set (review the diff first)
 npx cdk deploy --all -c mode=standalone -c configFile=config/<customer>.json --profile <p> --require-approval broadening
 
-# 3. Build + publish the ARM64 image by DIGEST, set runtimeImageUri, redeploy to activate the Runtime
-./use-cases/_harness/build-image.sh --profile <p> --region <r> --repo govai-<customer> --tag v1
-#   -> copy IMAGE_DIGEST_URI into config.agentcore.runtimeImageUri, then re-run the deploy above
-
-# 4. Provision humans (§A), then run the positive + negative transactions
+# 5. Provision humans (§A), then run the positive + negative transactions
 ```
+
+**Two-phase alternative (governance first, agent later).** To stand up and inspect the governance
+layer before any agent exists, deploy with the placeholder left in place — the Runtime is skipped (a
+config warning says so) and baseline + platform + controls come up. Then do step 3 (build + set
+digest) and re-run step 4; the Runtime is added on the redeploy. This is also how you swap in a new
+image later: rebuild, update the digest, redeploy.
 
 **Copy-paste authenticated invoke** (the Runtime uses a JWT authorizer, so call the HTTPS invocation
 endpoint with a Bearer ACCESS token — a SigV4 `aws bedrock-agentcore invoke-agent-runtime` is rejected
@@ -529,6 +543,69 @@ row below the actual observed result + where it was observed.
 | Approve / reject / timeout / replay | Correct outcome; **at most one** authorized execution |
 | Kill-switch engage / release / invalid action | Blocks, restores, and release verifies the deny is gone |
 | Existing logging + deploy/destroy | Customer's original logging intact afterward |
+
+### 15a. Where the evidence lives under the minimal profile
+
+The minimal MVP profile sets `enableObservability: false`, so there is **no X-Ray / Transaction
+Search trace** — do NOT expect one. Every row's evidence comes from these instead:
+
+```bash
+R=<r>; CUST=<customer>; ENV=<env>; PROFILE=<p>
+P() { aws ssm get-parameter --region "$R" --profile "$PROFILE" --name "$1" --query Parameter.Value --output text; }
+APPROVALS=$(P /governed-ai/$CUST/$ENV/controls/hitl-approvals-table)      # HITL ledger (per-digest status)
+SM=$(P /governed-ai/$CUST/$ENV/controls/hitl-state-machine-arn)           # Step Functions execution history
+LEDGER=$(P /governed-ai/$CUST/$ENV/agent-platform/interceptor-ledger)     # per-user interceptor decisions
+KILL=$(P /governed-ai/$CUST/$ENV/controls/kill-switch-fn-arn)
+# Read a HITL outcome by action digest:
+aws dynamodb get-item --region "$R" --profile "$PROFILE" --table-name "$APPROVALS" \
+  --key '{"pk":{"S":"<actionDigest>"}}' --query 'Item.status.S' --output text
+```
+
+Evidence sources per row: **authz/deny** → gateway response + the interceptor ledger + CloudTrail
+(`AWS::BedrockAgentCore::Gateway` data events); **HITL outcome** → the approvals ledger `status` +
+the Step Functions execution history; **approval actor** → CloudTrail (AssumeRole management event +
+the `hitl-approval` Lambda data event added in review #2); **guardrail/model deny** → the
+`AccessDenied` on the inference call. CloudWatch Logs holds the Lambda/state-machine logs.
+
+### 15b. Executable failure-path procedures
+
+Run these in a scratch account with synthetic data; each has an exact expected observation.
+
+**1. Backend returns an error → `FAILED` (no false success).** Temporarily edit
+`use-cases/citizen-311/tools/index.py` so `submit_service_request` returns `{"ok": false, "error":
+"injected"}` (or `raise RuntimeError("injected")`), rebuild/redeploy the tool, then run the workflow
+and **approve**. Expect: approvals ledger `status = FAILED`, the Step Functions execution ends in
+`ExecutionFailed` (not `Completed`), and nothing is filed. Revert the tool afterward.
+
+**2. Uncertain execution → `UNKNOWN` (reconcilable, never a silent success).** Temporarily make the
+tool return a non-JSON body (e.g. `return "<html>502</html>"` before serialization) or sleep past the
+executor timeout, redeploy, run + approve. Expect: approvals ledger `status = UNKNOWN`, the execution
+ends `ExecutionFailed`, and the row is reconciled out-of-band by the idempotency key (= the action
+digest). This proves a malformed/ambiguous backend response does NOT leave the row stuck `EXECUTING`
+and is NOT reported as completed.
+
+**3. Missing guardrail → `AccessDenied`.** Assume the runtime role and call Bedrock with **no**
+guardrail:
+```bash
+# runtime role = <governedRolePrefix>-runtime-<env>; default prefix is govai-<customer>-governed
+RT_ROLE=$(aws iam get-role --profile "$PROFILE" --role-name govai-$CUST-governed-runtime-$ENV --query Role.Arn --output text)
+CREDS=$(aws sts assume-role --profile "$PROFILE" --role-arn "$RT_ROLE" --role-session-name gr-test --query Credentials --output json)
+# with those creds, call InvokeModel on an allowed model WITHOUT --guardrail-identifier
+# -> expect AccessDeniedException (DenyUngovernedInference: Null bedrock:GuardrailIdentifier)
+```
+
+**4. Wrong guardrail → `AccessDenied`.** Repeat the call but pass a **different** guardrail id than
+the approved one. Expect `AccessDeniedException` from `DenyUnapprovedGuardrail` (StringNotEquals). The
+approved id/version is in SSM at `.../baseline/guardrail-id` and `.../baseline/guardrail-version`.
+
+**5. Kill-switch cannot confirm containment → fail closed (no false "engaged").** First confirm the
+normal path: invoke the kill-switch Lambda with `{"action":"engage"}`, verify the forbid policy
+reaches `ACTIVE` and tool calls are blocked at the gateway, then `{"action":"release"}` restores
+access and the SSM flag returns to `normal`. To exercise the failure path, temporarily remove the
+kill-switch role's `CreatePolicy`/`ManageResourceScopedPolicy` permission (or point it at a
+non-existent gateway), invoke `engage`, and confirm it **raises / returns an error and does NOT report
+engaged** — the control fails closed rather than claiming containment it didn't achieve. Restore the
+permission afterward.
 
 ---
 

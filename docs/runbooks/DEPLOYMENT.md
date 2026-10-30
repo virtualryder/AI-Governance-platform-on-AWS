@@ -571,18 +571,25 @@ the `hitl-approval` Lambda data event added in review #2); **guardrail/model den
 
 Run these in a scratch account with synthetic data; each has an exact expected observation.
 
-**1. Backend returns an error → `FAILED` (no false success).** Temporarily edit
-`use-cases/citizen-311/tools/index.py` so `submit_service_request` returns `{"ok": false, "error":
-"injected"}` (or `raise RuntimeError("injected")`), rebuild/redeploy the tool, then run the workflow
-and **approve**. Expect: approvals ledger `status = FAILED`, the Step Functions execution ends in
-`ExecutionFailed` (not `Completed`), and nothing is filed. Revert the tool afterward.
+The reference svc311 tool has an off-by-default `CHAOS_MODE` env hook so paths 1 and 2 need **no
+redeploy** — flip it on the consequential-target Lambda, run + approve, then turn it off:
+```bash
+TOOL=$(P /governed-ai/$CUST/$ENV/agent-platform/consequential-target-arn)   # the executor's target
+chaos() { aws lambda update-function-configuration --region "$R" --profile "$PROFILE" \
+  --function-name "$TOOL" --environment "Variables={CHAOS_MODE=$1}" >/dev/null; sleep 3; }
+```
 
-**2. Uncertain execution → `UNKNOWN` (reconcilable, never a silent success).** Temporarily make the
-tool return a non-JSON body (e.g. `return "<html>502</html>"` before serialization) or sleep past the
-executor timeout, redeploy, run + approve. Expect: approvals ledger `status = UNKNOWN`, the execution
-ends `ExecutionFailed`, and the row is reconciled out-of-band by the idempotency key (= the action
-digest). This proves a malformed/ambiguous backend response does NOT leave the row stuck `EXECUTING`
-and is NOT reported as completed.
+**1. Backend returns an error → `FAILED` (no false success).** `chaos fail`, run the workflow and
+**approve**. Expect: approvals ledger `status = FAILED`, the Step Functions execution ends in
+`ExecutionFailed` (not `Completed`), nothing filed. Then `chaos ""` to clear.
+
+**2. Uncertain execution → `UNKNOWN` (reconcilable, never a silent success).** `chaos malformed`, run
++ approve. Expect: approvals ledger `status = UNKNOWN`, the execution ends `ExecutionFailed`, and the
+row is reconciled out-of-band by the idempotency key (= the action digest). This proves an
+unrecognized/ambiguous backend response does NOT leave the row stuck `EXECUTING` and is NOT reported as
+completed. Then `chaos ""` to clear. (The literal malformed-JSON path — a non-JSON byte stream — is
+covered by unit tests; a real Lambda always returns valid JSON, so live we exercise the non-object
+case, which the contract also routes to `UNKNOWN`.)
 
 **3. Missing guardrail → `AccessDenied`.** Assume the runtime role and call Bedrock with **no**
 guardrail:

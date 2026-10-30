@@ -9,6 +9,15 @@ real system of record. `submit_service_request` is present for completeness but 
 agent by Cedar (c311_no_self_submit) — only the human sign-off gate may invoke it.
 """
 import json
+import os
+
+# Acceptance-harness fault injection for the consequential submit path, OFF by default. The §15b
+# failure-path procedures flip this with a single `aws lambda update-function-configuration
+# --environment Variables={CHAOS_MODE=fail|malformed}` on THIS tool (the executor's target) so a
+# reviewer can exercise the executor's FAILED / UNKNOWN handling live without a redeploy. Never set in
+# a customer deployment. "fail" => ok:false; "malformed" => a non-object response the executor cannot
+# classify as success (-> UNKNOWN, reconcilable).
+CHAOS_MODE = os.environ.get("CHAOS_MODE", "").lower()
 
 CATALOG = [
     {"category": "pothole", "fields": ["address", "severity"]},
@@ -43,6 +52,10 @@ def handler(event, context):
         # Reached only via the human sign-off gate (Cedar forbids the agent from calling this). This is
         # the consequential target the HITL executor invokes, so it must honour the executor's backend
         # contract: signal success POSITIVELY with "ok": true (absence of an error is NOT success).
+        if CHAOS_MODE == "fail":  # §15b path 1 -> executor records FAILED
+            return {"ok": False, "error": "chaos: injected backend failure"}
+        if CHAOS_MODE == "malformed":  # §15b path 2 -> non-object -> executor records UNKNOWN
+            return "chaos: unrecognized non-object response"
         return {"ok": True, "request_id": "SR-DEMO-0001", "status": "submitted", "category": args.get("category")}
 
     return {"ok": False, "error": "unknown tool", "tool": tool}

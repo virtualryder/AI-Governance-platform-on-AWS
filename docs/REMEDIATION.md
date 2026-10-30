@@ -53,6 +53,10 @@ three loose ends. All fixed:
 the live acceptance run itself, which per the reviewer must be a **different account** than the
 personal test account and a **genuinely separate operator** to count as *release accepted*.
 
+**Designated acceptance run:** the reviewer (independent operator) runs the full §15 matrix,
+including the failure paths, live in sandbox account **663898937974** (not the personal test account
+864217980669) under a named CLI profile the account owner supplies. Not yet executed.
+
 ---
 
 ## Second review (commit `c18c586`, 29 Oct 2026) — standalone MVP blockers

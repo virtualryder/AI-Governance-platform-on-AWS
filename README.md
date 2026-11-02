@@ -92,16 +92,18 @@ Copy `config/platform.example.json` to `config/<customer>.json` for each custome
 ## Maturity
 
 This is a **governance accelerator undergoing a defined hardening + validation phase** — not a
-production-certified, four-mode product. Four independent readiness reviews (29–30 Oct 2026) drove the
-current state; their findings and fixes are tracked in [`docs/REMEDIATION.md`](docs/REMEDIATION.md).
+production-certified, four-mode product. Six independent readiness reviews (29 Oct–2 Nov 2026) drove
+the current state; their findings and fixes are tracked in [`docs/REMEDIATION.md`](docs/REMEDIATION.md).
 
-> **Current status:** all four reviews' findings are remediated in code, and the fourth review assessed
-> the standalone MVP as an **acceptance-ready candidate** (after corrections now applied: build-first
+> **Current status:** all six reviews' findings are remediated in code. The reviews assessed the
+> standalone MVP as an **acceptance-ready candidate** (corrections applied through review 6: build-first
 > image gate, approval-Lambda audit capture, a fail-closed executor backend contract, guardrail-version
-> republish, and executable failure-path acceptance steps). The **standalone** mode is **live-verified**
-> end to end against real AWS (authorized/unauthorized/lookalike access, guarded inference, HITL approve
-> + reject + replay, kill-switch engage/release) — the remaining step to *release accepted* is a
-> **second operator** running the §15 gate (incl. the §15b failure paths) in a **different account**.
+> republish, executable failure-path acceptance steps, runtime-role-scoped `denyUngovernedInference`
+> honesty, a real 4-mode `nag:all`, and SA-onboarding fixes). The **standalone** mode is
+> **live-verified** end to end against real AWS (authorized/unauthorized/lookalike access, guarded
+> inference, HITL approve + reject + replay, kill-switch engage/release) — the remaining step to
+> *release accepted* is a **second operator** running the §15 gate (incl. the §15b failure paths) in a
+> **different account** (a fresh sandbox is provisioned for exactly this).
 > Hub/spoke, org, and optional A2A/VPC/Memory/Omni are **built + verified but not yet live-validated**.
 > Explicit MVP exclusions (authenticated approver identity, real-backend idempotency, shared-account
 > logging restoration, multi-agent A2A, multi-account) are limitations by design — see REMEDIATION.

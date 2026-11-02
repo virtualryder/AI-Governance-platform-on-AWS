@@ -1,7 +1,7 @@
 # Readiness-review remediation (findings → fixes)
 
-**Final status (four reviews + live re-validation).** All findings from all four reviews are
-remediated in code (48 jest + 28 pytest green; cdk-nag clean across standalone/spoke/hub/org).
+**Final status (six reviews + live re-validation).** All findings from all six reviews are
+remediated in code (48 jest + 28 pytest green; `npm run nag:all` clean across standalone/spoke/hub/org).
 Validation maturity:
 
 - **Standalone** — **live verified** post-fix in a real account (acceptance matrix below): authorized /
@@ -17,6 +17,42 @@ Validation maturity:
 
 Avoid describing the platform as production-ready, universally deployable, exactly-once, or fully
 A2A-enabled on the current evidence.
+
+---
+
+## Sixth review (commit `c5c8ff7`, 2 Nov 2026) — SA-unaided-deploy, full local gate
+
+A sixth independent operator ran the complete local gate (npm ci / build / jest 48 / pytest 28 /
+cdk-nag ×4) from a clean checkout and verified the maturity claims hold. Findings (the material ones
+from review 5 were already fixed — this operator was on a pre-`4010f92` checkout):
+
+| Finding | Fix |
+|---|---|
+| `npm run nag` validated only the **default** mode, while the docs claimed 4-mode clean | Added `nag:standalone/spoke/hub/org` + **`nag:all`**; docs now reference `nag:all` as the verifiable 4-mode command |
+| `npm test` runs ~10–12 min + a ~3.3 GB first-run image pull with **no warning** — reads as a hang | Warned in SA-SETUP, README, runbook §5/§12b, and the handoff |
+| Synth pip-installs boto3/botocore from **PyPI**, not just public ECR | Added `pypi.org`/`files.pythonhosted.org` to the egress notes + troubleshooting |
+| **W2001**: the guardrail-pin SSM params were declared-but-unreferenced in a no-Runtime synth (raising "confirm the pin reaches the template") | The pin **does** reach the Runtime env when deployed (jest asserts it). `guardrailEnv` construction moved INSIDE the Runtime gate so the `CfnParameter`s exist only when a Runtime consumes them — W2001 gone; placeholder config confirmed 0 Runtime + no warning |
+| `addDependency` (deprecated `CfnResource` API) ×N | Switched the 7 L1→L1 sites to `addResourceDependency` (the `.node.addDependency` Construct calls are correct, untouched) |
+| No `npm audit` story for a regulated demo | Documented the posture (customer `LIMITS.md` + SA-SETUP): all advisories are local build/test toolchain (jest/babel; minimatch via aws-cdk-lib/cdk-nag), none in deployed Python runtime; minimatch ReDoS not reachable; no reflexive `audit fix` on pinned build deps |
+
+Commendations (no change): `invocationLoggingOwnership` create-mode refuse-to-overwrite, and the
+`EXPECT_ACCOUNT` guard in the acceptance harness.
+
+---
+
+## Fifth review (commit `4010f92`, 2 Nov 2026) — scope honesty + SA-unaided-deploy
+
+A fifth independent operator (pre-deploy) found four issues that would stop or mislead a new SA:
+
+| # | Finding | Fix |
+|---|---|---|
+| 2 (material) | `enforceAccountLevel` claimed account-wide enforcement, but the ungoverned-inference deny binds **only the governed runtime role** — an SA could misrepresent scope to an auditor | Renamed to **`denyUngovernedInference`** (deprecated alias kept, loader warns); corrected the field/class comments, CONTROLS B2, CONCEPTS table, and the customer VALUE/LIMITS/DEMO claims to scope to the runtime role (account-/org-wide = org mode SCP); fixed the DEMO kill-switch "account-wide" line to "every tool call at the governed gateway" |
+| 1 | `jq` missing from the Windows install steps though preflight hard-fails without it | Added `winget`/`choco`/manual install + verify to SA-SETUP §1 |
+| 4a | First-run `preflight.sh` exited non-zero (pre-deploy) while the README said it should pass | preflight anchors on the gateway param: not-deployed-yet is a NOTE and exits 0; a missing sibling post-deploy is still a FAIL. Docs aligned |
+| 4b | `build-image.sh` referenced by bare name | Qualified to `use-cases/_harness/build-image.sh` |
+
+Plus tested-version ranges (Node 22–24, Python 3.12–3.13) + a bleeding-edge caveat. Commendation (no
+change): `invocationLoggingOwnership`.
 
 ---
 

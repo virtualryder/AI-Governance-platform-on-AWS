@@ -95,7 +95,10 @@ personal test account and a **genuinely separate operator** to count as *release
 
 **Designated acceptance run:** the reviewer (independent operator) runs the full §15 matrix,
 including the failure paths, live in sandbox account **663898937974** (not the personal test account
-864217980669) under a named CLI profile the account owner supplies. Not yet executed.
+864217980669) under the named CLI profile `daviryde-personal-sandbox`. Not yet executed. The complete
+ordered procedure + sign-off template is in
+[`docs/runbooks/ACCEPTANCE-HANDOFF.md`](runbooks/ACCEPTANCE-HANDOFF.md), driven by the scripted harness
+in `scripts/acceptance/`.
 
 ---
 

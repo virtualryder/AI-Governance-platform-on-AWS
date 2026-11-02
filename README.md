@@ -13,6 +13,10 @@ are, from a single-account pilot to an organization-wide control plane.
    diagrams, customer questionnaire, step-by-step, §12b walkthrough, §15/§15b acceptance, troubleshooting).
 5. **[scripts/acceptance/](scripts/acceptance/)** — the scripted acceptance harness (run it to validate + certify).
 
+**Running the independent acceptance / certification?** Follow
+**[docs/runbooks/ACCEPTANCE-HANDOFF.md](docs/runbooks/ACCEPTANCE-HANDOFF.md)** — one ordered procedure
+(clean checkout → deploy → harness → sign-off → teardown) with a fill-in sign-off template.
+
 **Running the POC with a customer?** See **[docs/customer/](docs/customer/)** — value one-pager, demo
 talk-track, and the honest-limits sheet.
 

@@ -533,6 +533,10 @@ Enable these per customer; each needs a live environment to prove before you rel
 
 ## 15. Acceptance evidence (capture for sign-off)
 
+> For the **independent second-operator run**, follow [`ACCEPTANCE-HANDOFF.md`](ACCEPTANCE-HANDOFF.md) —
+> a single self-contained procedure (clean checkout → deploy → harness → sign-off → teardown) with a
+> fill-in sign-off template. This section is the matrix it validates.
+
 Record: commit SHA, config hash, CDK + CLI versions, image **digest**, account/region, and for each
 row below the actual observed result + where it was observed.
 

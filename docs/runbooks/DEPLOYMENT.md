@@ -544,6 +544,12 @@ row below the actual observed result + where it was observed.
 | Kill-switch engage / release / invalid action | Blocks, restores, and release verifies the deny is gone |
 | Existing logging + deploy/destroy | Customer's original logging intact afterward |
 
+> **Scripted harness:** `scripts/acceptance/` turns the §12b/§15/§15b procedures below into runnable,
+> report-emitting checks — `./preflight.sh`, `./run-acceptance.sh [--only …]`, `./teardown-verify.sh`.
+> It emits `acceptance-out/<timestamp>/report.txt` + raw evidence (keep it for sign-off). The manual
+> blocks below remain the source of truth; the scripts encode them and are first shaken out on this run.
+> See `scripts/acceptance/README.md`.
+
 ### 15a. Where the evidence lives under the minimal profile
 
 The minimal MVP profile sets `enableObservability: false`, so there is **no X-Ray / Transaction

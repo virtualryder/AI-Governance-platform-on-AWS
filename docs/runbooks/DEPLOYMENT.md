@@ -168,6 +168,9 @@ decision, not an assurance it fits every boundary).
 
 ## 5. Prerequisites
 
+> New to the platform? Do [`docs/CONCEPTS.md`](../CONCEPTS.md) (control model) and
+> [`docs/SA-SETUP.md`](../SA-SETUP.md) (day-0 laptop) first — this section is the condensed checklist.
+
 - **Node 22+**, repo deps: `npm ci`. CDK via `npx` (pinned in `package.json`).
 - **Docker (with buildx) + outbound network to public ECR — required for `npm test`, `cdk synth`,
   AND `cdk deploy`**, not only the runtime image. The kill-switch Lambda bundles a pinned boto3 via a

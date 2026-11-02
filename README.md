@@ -5,10 +5,16 @@ AgentCore. It targets regulated workloads — US State & Local Government (SLG) 
 Sciences (HCLS) — and ships as four deployment modes so it can meet a customer where they already
 are, from a single-account pilot to an organization-wide control plane.
 
-**Start here:** **[docs/runbooks/DEPLOYMENT.md](docs/runbooks/DEPLOYMENT.md)** (the SA + customer
-deployment runbook — decision tree, architecture diagrams, customer questionnaire, step-by-step,
-troubleshooting) · `docs/ARCHITECTURE.md` (decision record) · `docs/CONTROLS.md` (control matrix) ·
-`CLAUDE.md` (build rules and plan).
+**New to this platform? Start here, in order:**
+1. **[docs/CONCEPTS.md](docs/CONCEPTS.md)** — the control model in 10 minutes (what/why/how it interlocks).
+2. **[GLOSSARY.md](GLOSSARY.md)** — AgentCore, Cedar, MCP, HITL, SCP, WORM, JWT-vs-SigV4, …
+3. **[docs/SA-SETUP.md](docs/SA-SETUP.md)** — day-0 laptop setup → `scripts/acceptance/preflight.sh` passes.
+4. **[docs/runbooks/DEPLOYMENT.md](docs/runbooks/DEPLOYMENT.md)** — deploy + verify (decision tree,
+   diagrams, customer questionnaire, step-by-step, §12b walkthrough, §15/§15b acceptance, troubleshooting).
+5. **[scripts/acceptance/](scripts/acceptance/)** — the scripted acceptance harness (run it to validate + certify).
+
+Reference: `docs/ARCHITECTURE.md` (decision record) · `docs/CONTROLS.md` (control matrix) ·
+`docs/REMEDIATION.md` (review history + exclusions) · `CLAUDE.md` (build rules and plan).
 
 ## Deployment modes
 Pick the smallest mode that fits — reuse an existing landing zone rather than rebuilding one.

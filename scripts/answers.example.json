@@ -1,0 +1,19 @@
+{
+  "_comment": "Answers for scripts/generate-config.js (standalone MVP). Fill from runbook §4, then: npm run gen:config -- --from scripts/answers.example.json --out config/<name>.json. Any omitted key uses its default. Booleans accept true/false or y/n. Lists accept an array or a comma-separated string.",
+  "customerName": "acme-mvp",
+  "environment": "dev",
+  "region": "us-east-1",
+  "dataClassification": "internal",
+  "costCenter": "ai-pilot",
+  "reviewerGroup": "csr-agents",
+  "allowedModelIds": ["anthropic.claude-sonnet-4-5-20250929-v1:0"],
+  "useCaseManifest": "use-cases/citizen-311/manifest.yaml",
+  "contentFilterStrength": "HIGH",
+  "invocationLoggingOwnership": "create",
+  "monthlyBudgetUsd": 50,
+  "budgetAlertEmails": ["ai-pilot-owners@example.com"],
+  "cloudTrailDataEvents": true,
+  "humanInTheLoop": true,
+  "killSwitch": true,
+  "detectiveConfigRules": false
+}

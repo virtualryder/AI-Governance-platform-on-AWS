@@ -136,6 +136,13 @@ flowchart TB
 
 Collect these **before** writing the config. (★ = blocks deployment if unknown.)
 
+> **Don't hand-edit JSON.** For a standalone/MVP config, feed these answers to the generator:
+> `npm run gen:config` (interactive) or `npm run gen:config -- --from scripts/answers.example.json
+> --out config/<customer>.json`. It fills safe MVP defaults, applies smart ones (PHI/CJIS → 365-day
+> retention; image left as the placeholder so the Runtime is skipped until you build it), and
+> **validates with the platform's own loader** before writing. Hub/org configs are authored by hand
+> from this table.
+
 | # | Question | Config field | Notes |
 |---|---|---|---|
 | 1 ★ | Which AWS account(s) and region? | `region`, profiles | Confirm AgentCore availability in the region (us-east-1 / us-west-2 first). |

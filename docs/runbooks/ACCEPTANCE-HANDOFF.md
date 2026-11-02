@@ -66,9 +66,11 @@ the toolchain.)
 ## Step 2 — config + pre-deploy capture
 
 ```bash
-cp config/standalone.example.json config/acme-mvp.json
-# edit config/acme-mvp.json: set customerName="acme-mvp", region="us-east-1". Leave
-# runtimeImageUri as the placeholder for now (the Runtime is skipped until you set a digest).
+# Generate + validate the config (preferred over hand-editing). Interactive, or from an answers file:
+npm run gen:config -- --from scripts/answers.example.json --out config/acme-mvp.json
+#   (answers.example.json already targets acme-mvp / us-east-1 / citizen-311; edit it first if needed)
+#   The generator leaves runtimeImageUri as the placeholder, so the Runtime is skipped until you set a
+#   digest in Step 4, and it validates the result with the platform's own loader before writing.
 
 # Capture the account's PRE-EXISTING Bedrock invocation-logging state (for the teardown comparison).
 aws bedrock get-model-invocation-logging-configuration --region "$R" --profile "$PROFILE" \

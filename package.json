@@ -6,6 +6,7 @@
   "bin": { "platform": "bin/platform.js" },
   "scripts": {
     "build": "tsc",
+    "gen:config": "node scripts/generate-config.js",
     "watch": "tsc -w",
     "test": "jest",
     "test:lambda": "python -m pytest test/lambda -q",

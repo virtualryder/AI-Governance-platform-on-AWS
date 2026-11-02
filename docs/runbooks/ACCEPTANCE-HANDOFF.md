@@ -67,7 +67,8 @@ npm ci && npm run build
 python -m venv .venv && . .venv/bin/activate && python -m pip install -r requirements-dev.txt
 docker info >/dev/null && echo "docker OK"          # synth/test bundle a Lambda via public ECR
 npm test && npm run test:lambda                      # expect 48 jest + 28 pytest green
-npx cdk synth --quiet -c mode=standalone -c configFile=config/acme-mvp.json -c nag=true --profile "$PROFILE"
+#   NOTE: `npm test` takes ~10-12 min and pulls a ~3.3 GB image on first run — not a hang.
+npm run nag:all                                      # cdk-nag across ALL FOUR modes (not just default)
 ```
 
 Expected: build clean, 48 jest + 28 pytest green, **0** cdk-nag findings. (Create `config/acme-mvp.json`

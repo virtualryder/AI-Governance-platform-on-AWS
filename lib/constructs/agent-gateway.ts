@@ -118,7 +118,7 @@ export class AgentGateway extends Construct {
           ]
         : undefined,
     });
-    this.gateway.addDependency(this.policyEngine);
+    this.gateway.addResourceDependency(this.policyEngine);
     // Ensure the role AND its inline policy exist before the gateway (which assumes the role to call
     // GetPolicyEngine during creation) — avoids an AccessDenied race.
     this.gateway.node.addDependency(this.role);
@@ -138,7 +138,7 @@ export class AgentGateway extends Construct {
         definition: { cedar: { statement } },
         enforcementMode: 'ACTIVE',
       });
-      baseline.addDependency(this.gateway);
+      baseline.addResourceDependency(this.gateway);
     }
   }
 

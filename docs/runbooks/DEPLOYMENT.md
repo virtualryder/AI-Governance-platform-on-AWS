@@ -179,10 +179,13 @@ decision, not an assurance it fits every boundary).
 > [`docs/SA-SETUP.md`](../SA-SETUP.md) (day-0 laptop) first — this section is the condensed checklist.
 
 - **Node 22+**, repo deps: `npm ci`. CDK via `npx` (pinned in `package.json`).
-- **Docker (with buildx) + outbound network to public ECR — required for `npm test`, `cdk synth`,
-  AND `cdk deploy`**, not only the runtime image. The kill-switch Lambda bundles a pinned boto3 via a
-  Docker build image, so synthesis/tests pull `public.ecr.aws/sam/build-python3.13`. (A review-only
-  profile may disable the kill switch to synth without Docker, but the governed MVP ships it.)
+- **Docker (with buildx) + outbound network to public ECR AND PyPI — required for `npm test`,
+  `cdk synth`, AND `cdk deploy`**, not only the runtime image. The kill-switch Lambda bundles a pinned
+  boto3 via a Docker build image, so synthesis/tests pull `public.ecr.aws/sam/build-python3.13` **and
+  pip-install boto3/botocore from `pypi.org` + `files.pythonhosted.org`** into the bundle. (A
+  review-only profile may disable the kill switch to synth without Docker, but the governed MVP ships
+  it.) **`npm test` runs ~10–12 min and pulls ~3.3 GB on first run — that long quiet stretch is normal,
+  not a hang.**
 - **Python 3.12+ for the control-handler tests:** `python -m pip install -r requirements-dev.txt`
   (pinned pytest + boto3), then `npm run test:lambda`.
 - **AWS credentials for the target account/region.** Name the profile explicitly on every command
@@ -370,8 +373,9 @@ image.sh` creates its own ECR repo, so you do NOT need a prior CDK deploy to bui
 python -m pip install -r requirements-dev.txt
 
 # 1. Clean build + both test suites + nag (needs Docker running — the kill-switch Lambda bundles boto3)
-npm ci && npm run build && npm test && npm run test:lambda
-npx cdk synth --quiet -c mode=standalone -c configFile=config/<customer>.json -c nag=true --profile <p>
+npm ci && npm run build && npm test && npm run test:lambda   # npm test ~10-12 min + ~3.3 GB pull first run (not a hang)
+npm run nag:all                                              # cdk-nag across ALL FOUR modes (npm run nag alone = default mode only)
+npx cdk synth --quiet -c mode=standalone -c configFile=config/<customer>.json -c nag=true --profile <p>   # nag your actual config
 
 # 2. Bootstrap the account/region for CDK assets
 npx cdk bootstrap aws://<account>/<r> --profile <p>

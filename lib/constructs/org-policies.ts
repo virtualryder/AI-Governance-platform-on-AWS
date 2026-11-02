@@ -159,7 +159,7 @@ export class OrgPolicies extends Construct {
         definition: { scpActionDefinition: { policyId: freezeScp.attrId, targetIds: [org.agenticOuId] } },
         subscribers: config.controls.budgetAlertEmails.map((address) => ({ type: 'EMAIL', address })),
       });
-      action.addDependency(budget);
+      action.addResourceDependency(budget);
     }
   }
 }

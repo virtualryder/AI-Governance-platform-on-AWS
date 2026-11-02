@@ -201,7 +201,7 @@ export class AgentRuntime extends Construct {
       name: `${name}_default`,
       description: 'Default runtime endpoint',
     });
-    this.endpoint.addDependency(this.runtime);
+    this.endpoint.addResourceDependency(this.runtime);
   }
 
   get runtimeArn(): string {

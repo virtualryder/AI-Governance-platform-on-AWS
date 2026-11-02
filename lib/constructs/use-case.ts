@@ -105,7 +105,7 @@ export class UseCase extends Construct {
         credentialProviderConfigurations: [{ credentialProviderType: 'GATEWAY_IAM_ROLE' }],
         targetConfiguration: { mcp: { lambda: { lambdaArn: fn.functionArn, toolSchema: { inlinePayload } } } },
       });
-      target.addDependency(props.gateway);
+      target.addResourceDependency(props.gateway);
       this.targets.push(target);
       this.targetNames.push(t.target);
     }
@@ -136,7 +136,7 @@ export class UseCase extends Construct {
         validationMode: 'IGNORE_ALL_FINDINGS',
       });
       // Targets define the action schema the forbid references; create policies after them.
-      for (const target of this.targets) policy.addDependency(target);
+      for (const target of this.targets) policy.addResourceDependency(target);
       this.policies.push(policy);
     }
 

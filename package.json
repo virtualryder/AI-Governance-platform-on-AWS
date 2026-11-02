@@ -15,7 +15,12 @@
     "synth:hub": "cdk synth --quiet -c mode=hub",
     "synth:spoke": "cdk synth --quiet -c mode=spoke",
     "synth:org": "cdk synth --quiet -c mode=org",
-    "nag": "cdk synth --quiet -c nag=true"
+    "nag": "cdk synth --quiet -c nag=true",
+    "nag:standalone": "cdk synth --quiet -c mode=standalone -c nag=true",
+    "nag:spoke": "cdk synth --quiet -c mode=spoke -c nag=true",
+    "nag:hub": "cdk synth --quiet -c mode=hub -c nag=true",
+    "nag:org": "cdk synth --quiet -c mode=org -c nag=true",
+    "nag:all": "npm run nag:standalone && npm run nag:spoke && npm run nag:hub && npm run nag:org"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",

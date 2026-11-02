@@ -28,6 +28,11 @@ Very new runtimes (Node 25+, Python 3.14+) are untested here and may hit missing
 tooling edge cases — if the local gate (step 3) misbehaves on a bleeding-edge runtime, drop to Node 22
 LTS / Python 3.13 before debugging further.
 
+`npm audit` will report advisories — they are all in the **local build/test toolchain** (jest/babel,
+and minimatch via aws-cdk-lib/cdk-nag), **none in deployed/runtime code**. Don't `npm audit fix` the
+pinned build deps reflexively. Full story (the one a regulated customer's security team will ask for):
+[`docs/customer/LIMITS.md`](customer/LIMITS.md) → "Dependency / supply-chain posture".
+
 ### Per-OS notes
 - **macOS:** `brew install node awscli python jq`; Docker Desktop from docker.com. bash via
   `brew install bash` (macOS ships an old 3.2 — the acceptance scripts want 4.3+).
@@ -77,13 +82,23 @@ python -m pip install -r requirements-dev.txt        # pinned pytest + boto3
 docker info >/dev/null && echo "docker OK"
 
 # Full local gate
-npm test               # jest template assertions (needs Docker)
-npm run test:lambda    # pytest behavioral tests
-npx cdk synth --quiet -c mode=standalone -c nag=true   # synth + cdk-nag, standalone mode
+npm test               # jest template assertions (needs Docker — SLOW, see note below)
+npm run test:lambda    # pytest behavioral tests (~1s)
+npm run nag:all        # cdk-nag across ALL FOUR modes (standalone/spoke/hub/org)
 ```
 
-Expected: build clean, jest + pytest green, synth with **0** nag findings. These are the same gates CI
-runs; if they pass locally you have a sane environment.
+> **`npm test` takes ~10–12 minutes and on the FIRST run also pulls a ~3.3 GB Docker build image —
+> this is normal, not a hang.** The kill-switch Lambda bundles a pinned boto3 via
+> `public.ecr.aws/sam/build-python3.13`, and one template test (standalone hub-leak guard) alone takes
+> ~95s. Expect a long quiet stretch on the first run; don't kill it. Subsequent runs are faster (image
+> cached). `npm run nag:all` runs four synths back-to-back, so it also takes a few minutes.
+
+> **`npm run nag` (no suffix) checks only the DEFAULT mode.** Use **`npm run nag:all`** for the
+> four-mode check the docs refer to (or `nag:standalone` / `nag:spoke` / `nag:hub` / `nag:org`
+> individually).
+
+Expected: build clean, jest + pytest green, `nag:all` with **0** findings across all four modes. These
+are the same gates CI runs; if they pass locally you have a sane environment.
 
 ## 4. Bootstrap + preflight the account
 
@@ -104,7 +119,8 @@ the platform-discovery checks turn into PASS (a missing one post-deploy is then 
 | Symptom | Cause | Fix |
 |---|---|---|
 | `cdk: command not found` | CDK isn't global | use `npx cdk …` / `npm run …` |
-| `npm test` hangs or errors pulling an image | Docker not running / no network to public ECR | start Docker Desktop; allow outbound to `public.ecr.aws` |
+| `npm test` seems to hang (long silence) | First-run image pull + slow tests — NORMAL (~10–12 min, ~3.3 GB pull) | wait it out; don't kill it. Only suspect a real hang after ~15 min |
+| `npm test`/`synth` errors pulling/installing | no network to public ECR **or PyPI** | allow outbound to `public.ecr.aws` **and** `pypi.org` + `files.pythonhosted.org` (synth pip-installs boto3/botocore into the Lambda bundle) |
 | `get-parameter` fails with a mangled `/C:/...` name | Git Bash MSYS path-mangling | prefix `MSYS_NO_PATHCONV=1`, or run from PowerShell |
 | pytest import/collection errors | wrong Python / deps not installed | activate the venv; `pip install -r requirements-dev.txt` |
 | acceptance script: `syntax error` / weird quoting | bash 3.2 (old macOS) | install bash 4.3+ and run with it |

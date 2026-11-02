@@ -79,12 +79,12 @@ npx cdk deploy --all -c mode=standalone -c configFile=config/<customer>.json --p
 ```powershell
 npm ci
 npm run build              # type-check
-npm test                   # template assertions (jest) — needs Docker (kill-switch Lambda bundles boto3)
-python -m pip install -r requirements-dev.txt && npm run test:lambda   # behavioral control-handler tests
+npm test                   # template assertions (jest) — needs Docker; SLOW: ~10-12 min + a one-time ~3.3 GB image pull on first run (not a hang)
+python -m pip install -r requirements-dev.txt && npm run test:lambda   # behavioral control-handler tests (~1s)
 npm run synth:standalone   # (also :hub :spoke :org)
-npm run nag                # cdk-nag AwsSolutions + HIPAA packs
+npm run nag:all            # cdk-nag (AwsSolutions + HIPAA) across ALL FOUR modes; `npm run nag` alone checks only the default mode
 ```
-Copy `config/platform.example.json` to `config/<customer>.json` for each customer.
+Copy `config/platform.example.json` to `config/<customer>.json` for each customer (or scaffold one with `npm run gen:config`).
 
 > **Deployment is intentionally not run from arbitrary machines.** Synth and test freely; deploy only
 > against an explicitly named target account/profile (`--profile <name>`).
@@ -137,7 +137,7 @@ infrastructure exists. Per-capability detail:
 
 | Capability | Status | Notes |
 |---|---|---|
-| CDK build / 4-mode synth / cdk-nag | **Live-tested** (local) | 48 jest + 28 pytest green; nag clean ×4 modes |
+| CDK build / 4-mode synth / cdk-nag | **Live-tested** (local) | 48 jest + 28 pytest green; `npm run nag:all` clean across all 4 modes |
 | Standalone foundation (baseline + platform + controls) | **Live-tested** (2026-10-29) | deployed to a real account; enforcing Cedar, guardrail pinned to runtime, HITL end-to-end, safe logging ownership — all exercised live |
 | citizen-311 governed workflow | **Live-validated** (post-fix) | full workflow run in-account: authorized/denied/approved/kill-switch all pass — see `docs/REMEDIATION.md` Gate 2 |
 | Kill switch / guardrail enforcement / interceptor | **Live-tested + unit-tested** | engage→block→release→restore verified live; behavioral pytest for kill-switch + interceptor + HITL executor + logging ownership |

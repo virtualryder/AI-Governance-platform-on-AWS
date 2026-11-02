@@ -52,6 +52,26 @@ These are not defaults to assume; agree them before deploying (runbook §4):
   (≥365 days for PHI/CJIS) and guardrail strength.
 - Evidence-key ownership, and whether private connectivity (VPC/PrivateLink) is required.
 
+## Dependency / supply-chain posture (the `npm audit` story)
+
+`npm audit` currently reports advisories (≈25: mostly low/moderate), and a security reviewer will ask.
+The honest, defensible position:
+
+- **None are in deployed or runtime code.** The npm dependency tree is the **CDK authoring/synth +
+  test toolchain** — it runs only on the SA's machine during `build` / `synth` / `test`. The deployed
+  runtime is **Python** (the agent + control Lambdas), whose dependencies are pinned separately in
+  `requirements.txt` / `requirements-dev.txt`.
+- The bulk are **test-only** (jest/babel devDependencies) — never built into any artifact.
+- The few that `npm audit --omit=dev` flags trace to **minimatch** (a glob-ReDoS advisory) pulled in
+  transitively by `aws-cdk-lib` / `cdk-nag` — **synth-time** libraries. The vector (a malicious glob
+  pattern) is not reachable: the globs are the repo's own file paths, not external input.
+- We do **not** auto-run `npm audit fix` on the pinned build toolchain: it churns pinned versions with
+  no runtime-security benefit and risks a real regression. It's re-checked each release and resolved
+  when `aws-cdk-lib` ships a patched transitive. For a production engagement, pin a fully hashed lock
+  (`npm ci` against a committed `package-lock.json`; `pip-compile --generate-hashes` for Python).
+
+Net: zero customer-runtime exposure from the current advisories; they are local-toolchain hygiene.
+
 ## How maturity is labeled
 
 Every capability carries one of four honest labels, tracked in [`../REMEDIATION.md`](../REMEDIATION.md):

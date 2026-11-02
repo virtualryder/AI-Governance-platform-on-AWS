@@ -99,7 +99,7 @@ export class OmniObservability extends Construct {
           Body: omni.dashboardBody,
         },
       });
-      this.dashboard.addDependency(this.space);
+      this.dashboard.addResourceDependency(this.space);
     }
   }
 

@@ -87,26 +87,28 @@ export class AgentPlatformStack extends PlatformStack {
         }
       : {};
 
-    // Approved guardrail published by the baseline — pinned into the runtime so every model call is
-    // governed (and so the ungoverned-inference deny below does not fail-close the agent).
-    const guardrailEnv: Record<string, string> = {};
-    if (this.config.governance.guardrail.enabled) {
-      guardrailEnv.GUARDRAIL_ID = ssm.StringParameter.valueForStringParameter(
-        this,
-        `${this.paramPrefix}/baseline/guardrail-id`,
-      );
-      guardrailEnv.GUARDRAIL_VERSION = ssm.StringParameter.valueForStringParameter(
-        this,
-        `${this.paramPrefix}/baseline/guardrail-version`,
-      );
-    }
-
     // Gate on a REAL image, not merely a truthy string: the example profile ships a placeholder, so a
     // bare `if (ac.runtimeImageUri)` would emit the placeholder into the Runtime and fail the deploy
     // (review #4/F1). With the placeholder, this stack deploys governance + platform (gateway, Cedar,
     // identity) and skips the Runtime; set the digest and redeploy to activate it.
     const imageUri = ac.runtimeImageUri;
     if (isDeployableImageUri(imageUri)) {
+      // Approved guardrail published by the baseline — pinned into the runtime so every model call is
+      // governed (and so the ungoverned-inference deny below does not fail-close the agent). Built
+      // INSIDE this block so the SSM CfnParameters are only created when a Runtime references them —
+      // otherwise a no-Runtime synth declares them unreferenced (CloudFormation W2001).
+      const guardrailEnv: Record<string, string> = {};
+      if (this.config.governance.guardrail.enabled) {
+        guardrailEnv.GUARDRAIL_ID = ssm.StringParameter.valueForStringParameter(
+          this,
+          `${this.paramPrefix}/baseline/guardrail-id`,
+        );
+        guardrailEnv.GUARDRAIL_VERSION = ssm.StringParameter.valueForStringParameter(
+          this,
+          `${this.paramPrefix}/baseline/guardrail-version`,
+        );
+      }
+
       this.runtime = new AgentRuntime(this, 'Runtime', {
         config: this.config,
         identity: this.identity,

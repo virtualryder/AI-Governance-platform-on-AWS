@@ -13,6 +13,9 @@ are, from a single-account pilot to an organization-wide control plane.
    diagrams, customer questionnaire, step-by-step, §12b walkthrough, §15/§15b acceptance, troubleshooting).
 5. **[scripts/acceptance/](scripts/acceptance/)** — the scripted acceptance harness (run it to validate + certify).
 
+**Running the POC with a customer?** See **[docs/customer/](docs/customer/)** — value one-pager, demo
+talk-track, and the honest-limits sheet.
+
 Reference: `docs/ARCHITECTURE.md` (decision record) · `docs/CONTROLS.md` (control matrix) ·
 `docs/REMEDIATION.md` (review history + exclusions) · `CLAUDE.md` (build rules and plan).
 

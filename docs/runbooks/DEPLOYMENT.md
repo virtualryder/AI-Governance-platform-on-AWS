@@ -551,6 +551,11 @@ Search trace** — do NOT expect one. Every row's evidence comes from these inst
 
 ```bash
 R=<r>; CUST=<customer>; ENV=<env>; PROFILE=<p>
+# Account guard: the acceptance run MUST target the intended scratch account, never a personal/prod
+# account — profile NAMES lie, so assert the resolved account id before anything else.
+EXPECT_ACCOUNT=<acceptance-account-id>
+ACC=$(aws sts get-caller-identity --profile "$PROFILE" --query Account --output text)
+[ "$ACC" = "$EXPECT_ACCOUNT" ] || { echo "ABORT: profile $PROFILE resolves to $ACC, expected $EXPECT_ACCOUNT"; exit 1; }
 P() { aws ssm get-parameter --region "$R" --profile "$PROFILE" --name "$1" --query Parameter.Value --output text; }
 APPROVALS=$(P /governed-ai/$CUST/$ENV/controls/hitl-approvals-table)      # HITL ledger (per-digest status)
 SM=$(P /governed-ai/$CUST/$ENV/controls/hitl-state-machine-arn)           # Step Functions execution history

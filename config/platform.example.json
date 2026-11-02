@@ -31,7 +31,7 @@
         { "name": "MedicalDiagnosis", "definition": "Diagnosing medical conditions or recommending specific treatments.", "examples": ["What disease do I have based on these symptoms?"] }
       ],
       "blockedMessage": "This request can't be completed under this agency's AI use policy.",
-      "enforceAccountLevel": true
+      "denyUngovernedInference": true
     }
   },
   "identity": {

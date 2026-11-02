@@ -11,10 +11,10 @@ Read [`docs/CONCEPTS.md`](CONCEPTS.md) first so the steps mean something. Unknow
 
 | Tool | Version | Why | Check |
 |---|---|---|---|
-| Node.js | **22 LTS+** | CDK (TypeScript infra) | `node -v` |
+| Node.js | **22 LTS** (tested 22–24) | CDK (TypeScript infra) | `node -v` |
 | npm | bundled with Node | deps + scripts | `npm -v` |
 | AWS CLI | **v2** | all AWS calls | `aws --version` |
-| Python | **3.12+** | control-handler tests, image build helpers | `python --version` |
+| Python | **3.12–3.13** (tested) | control-handler tests, image build helpers | `python --version` |
 | Docker Desktop | current, with **buildx** | synth/test/deploy bundle a Lambda via a Docker build image; Runtime image is ARM64 | `docker info`, `docker buildx version` |
 | jq | 1.6+ | JSON wrangling in scripts | `jq --version` |
 | git | current | clone | `git --version` |
@@ -24,12 +24,20 @@ CDK itself is **not** installed globally — it's pinned in `package.json` and r
 Running a bare `cdk` will usually fail ("command not found"); always use `npx cdk` or the `npm run`
 scripts.
 
+Very new runtimes (Node 25+, Python 3.14+) are untested here and may hit missing prebuilt wheels or
+tooling edge cases — if the local gate (step 3) misbehaves on a bleeding-edge runtime, drop to Node 22
+LTS / Python 3.13 before debugging further.
+
 ### Per-OS notes
 - **macOS:** `brew install node awscli python jq`; Docker Desktop from docker.com. bash via
   `brew install bash` (macOS ships an old 3.2 — the acceptance scripts want 4.3+).
 - **Linux:** your package manager for node/awscli/python/jq/docker; bash is already current.
 - **Windows:** install Node, AWS CLI v2, Python, Docker Desktop, and **Git for Windows** (gives you
-  Git Bash). **Run all shell scripts and `aws`/`cdk` commands from Git Bash**, not PowerShell/cmd.
+  Git Bash + a bash 5.x). **Run all shell scripts and `aws`/`cdk` commands from Git Bash**, not
+  PowerShell/cmd.
+  - **jq** is NOT bundled and preflight hard-fails without it. Install it: `winget install jqlang.jq`
+    (or `choco install jq`, or download `jq.exe` from jqlang.github.io and put it on your PATH — e.g.
+    `~/bin`, no admin needed). Verify `jq --version` in Git Bash before running preflight.
   - *MSYS path-mangling gotcha:* Git Bash rewrites a leading-slash argument into a Windows path, which
     corrupts SSM parameter names like `/governed-ai/...`. If a `get-parameter` fails with a weird
     path, prefix the command with `MSYS_NO_PATHCONV=1` (or run that call from PowerShell). The
@@ -86,10 +94,10 @@ cd scripts/acceptance
 PROFILE=<name> EXPECT_ACCOUNT=<account> R=<region> CUST=<customer> ENV=dev ./preflight.sh
 ```
 
-`preflight.sh` is read-only. A clean pass means tools present, the profile points at the intended
-account, CDK is bootstrapped, and (if deployed) the platform's discovery params resolve. If the
-platform isn't deployed yet, preflight will flag the missing SSM params — that's expected before your
-first deploy; follow runbook §12b to deploy, then re-run preflight.
+`preflight.sh` is read-only and **exits 0 before your first deploy**: it checks tools, the account
+guard, and CDK bootstrap, and when it sees the platform isn't deployed yet it prints a "not deployed
+yet — expected" note (not a failure) and stops there. After you deploy (runbook §12b), re-run it and
+the platform-discovery checks turn into PASS (a missing one post-deploy is then a real failure).
 
 ## 5. Common setup failures → fixes
 
@@ -110,7 +118,8 @@ first deploy; follow runbook §12b to deploy, then re-run preflight.
 - [ ] `npm test` and `npm run test:lambda` green
 - [ ] `npx cdk synth -c mode=standalone -c nag=true` → 0 nag findings
 - [ ] a named profile resolves to the **intended** account (`get-caller-identity`)
-- [ ] `scripts/acceptance/preflight.sh` passes (SSM-param checks may be pending until you deploy)
+- [ ] `scripts/acceptance/preflight.sh` passes (before first deploy it exits 0 with a "not deployed
+      yet" note; the platform-discovery checks become PASS after you deploy)
 
 Next: deploy and validate per [`docs/runbooks/DEPLOYMENT.md`](runbooks/DEPLOYMENT.md) §12b, then run
 `scripts/acceptance/run-acceptance.sh`.

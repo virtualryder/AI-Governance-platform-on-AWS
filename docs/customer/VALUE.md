@@ -23,8 +23,8 @@ AWS-native controls. The agent is treated as untrusted; the envelope is what you
 | A security reviewer asks… | This platform's answer | Enforced by |
 |---|---|---|
 | Can the agent do something it isn't authorized to? | **No** | Cedar authorization, **deny-by-default**, per caller group |
-| Can it call an LLM without our guardrail? | **No** | An IAM **deny** on any ungoverned/unapproved-guardrail inference — not a polite request |
-| Can it use a model we didn't approve? | **No** | Runtime IAM scoped to an explicit model allowlist (empty list fails closed) |
+| Can **the agent** call an LLM without our guardrail? | **No** | An IAM **deny** on the agent's governed runtime role for any ungoverned/unapproved-guardrail inference — not a polite request |
+| Can **the agent** use a model we didn't approve? | **No** | The agent's runtime-role IAM is scoped to an explicit model allowlist (empty list fails closed) |
 | Can a consequential action happen without a human? | **No** | Human-in-the-loop sign-off; the agent is forbidden the action; a separate role executes it once |
 | Can we prove what happened, and stop it instantly? | **Yes / Yes** | WORM (write-once) audit trail + customer-managed encryption; one-action kill switch |
 
@@ -32,10 +32,15 @@ The point is the **layering**: to do something harmful, a prompt or bug would ha
 authorization *and* IAM *and* the guardrail *and* (for consequential actions) a human. That is the
 pitch — not "the model is safe," but "the agent *cannot* step outside the envelope."
 
+> **Scope to state accurately:** in standalone/spoke, the guardrail and model-allowlist denies bind the
+> **governed runtime role** (the agent's execution role) — they govern *this agent*, not every
+> principal in the account. Denying ungoverned inference **account-/org-wide** is the **org mode** SCP.
+> Don't tell an auditor standalone enforces account-wide; it enforces for the governed agent.
+
 ## What the customer gets from the pilot
 
 - A **working governed agent in their account**, driven by their own identity groups, on synthetic data.
-- Controls they can see enforce themselves live: an unauthorized user denied, an ungoverned model call
+- Controls they can see enforce themselves live: an unauthorized user denied, the agent's ungoverned model call
   denied, a consequential action paused for a human and then executed exactly once, a kill switch that
   blocks everything, and a tamper-resistant audit record of all of it.
 - **Customer-managed KMS** on every store, **short-lived tokens**, least-privilege IAM, and per-user

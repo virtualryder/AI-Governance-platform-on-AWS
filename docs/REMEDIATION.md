@@ -93,12 +93,13 @@ three loose ends. All fixed:
 the live acceptance run itself, which per the reviewer must be a **different account** than the
 personal test account and a **genuinely separate operator** to count as *release accepted*.
 
-**Designated acceptance run:** the reviewer (independent operator) runs the full §15 matrix,
-including the failure paths, live in sandbox account **663898937974** (not the personal test account
-864217980669) under the named CLI profile `daviryde-personal-sandbox`. Not yet executed. The complete
-ordered procedure + sign-off template is in
-[`docs/runbooks/ACCEPTANCE-HANDOFF.md`](runbooks/ACCEPTANCE-HANDOFF.md), driven by the scripted harness
-in `scripts/acceptance/`.
+**Acceptance run:** the full §15/§15b matrix is driven by the scripted harness (`scripts/acceptance/`)
+via the ordered procedure + sign-off template in
+[`docs/runbooks/ACCEPTANCE-HANDOFF.md`](runbooks/ACCEPTANCE-HANDOFF.md). Two run types, tracked
+separately: a **validation / dry run** in a test account the owner controls (the project's designated
+test account is `864217980669`) exercises the fixes, runbook, harness, and docs end to end and counts
+as *live verified*; **release-acceptance** requires a **different** account than the author's and a
+**genuinely separate** operator. Not yet executed.
 
 ---
 

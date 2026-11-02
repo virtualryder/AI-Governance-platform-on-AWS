@@ -4,7 +4,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as bac from 'aws-cdk-lib/aws-bedrockagentcore';
 import { Construct } from 'constructs';
 import { PlatformStack, PlatformStackProps } from './platform-stack';
-import { isDeployableImageUri } from '../config/platform-config';
+import { isDeployableImageUri, denyUngovernedInference } from '../config/platform-config';
 import { InboundIdentity } from '../constructs/identity';
 import { AgentGateway } from '../constructs/agent-gateway';
 import { AgentMemory } from '../constructs/agent-memory';
@@ -124,9 +124,10 @@ export class AgentPlatformStack extends PlatformStack {
         },
       });
 
-      // Enforce governance on the runtime role: deny any Bedrock inference that carries no guardrail.
-      // The harness pins the approved guardrail above, so governed calls pass and ungoverned fail.
-      if (this.config.governance.guardrail.enabled && this.config.governance.guardrail.enforceAccountLevel) {
+      // Bind the ungoverned-inference deny to THIS runtime role (not account-wide): deny any Bedrock
+      // inference from the agent's execution role that carries no / an unapproved guardrail. The
+      // harness pins the approved guardrail above, so governed calls pass and ungoverned fail.
+      if (this.config.governance.guardrail.enabled && denyUngovernedInference(this.config.governance.guardrail)) {
         const denyArn = ssm.StringParameter.valueForStringParameter(
           this,
           `${this.paramPrefix}/baseline/ungoverned-inference-deny-arn`,

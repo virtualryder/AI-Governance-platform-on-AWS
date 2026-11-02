@@ -24,6 +24,10 @@ feature: regulated buyers trust a vendor who states limits up front. Mirrors the
   but not yet exercised live across real accounts.
 - **Observability is off in the minimal profile** — evidence comes from the audit trail, the approval
   ledger, and the workflow history rather than distributed traces.
+- **Guardrail / model-allowlist denial is scoped to the governed runtime role, not account-wide.** In
+  standalone/spoke the IAM deny binds the agent's execution role — it governs *this agent*, not every
+  principal in the account. Denying ungoverned inference account-/org-wide is the **org mode** SCP. Do
+  not represent standalone as account-wide ungoverned-inference enforcement.
 
 ## Explicit exclusions → production path
 

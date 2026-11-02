@@ -7,14 +7,25 @@ teaching/customer docs against reality.
 
 ## This run
 
+Set the target in Step 0 (`EXPECT_ACCOUNT` + `PROFILE`); the account guard enforces it. Pick the
+account by **what the run is for**:
+
+| Run type | Account | Counts as |
+|---|---|---|
+| **Author-side validation / dry run** (shake out the fixes, runbook, harness, docs) | a test account the owner controls — the project's designated test account is `864217980669` (deploy-target override) | *live verified* |
+| **Release-acceptance** | a **different** account than where the author validated, with a **genuinely separate** operator | *release accepted* |
+
 | | |
 |---|---|
-| **Account** | `663898937974` (scratch sandbox — **NOT** the author's personal `864217980669`) |
-| **Profile** | `daviryde-personal-sandbox` *(must resolve to the account above — the guard aborts otherwise)* |
 | **Region** | `us-east-1` |
 | **CUST / ENV** | `acme-mvp` / `dev` *(must match the deployed config's `customerName`/`environment`)* |
 | **Mode** | `standalone`, synthetic data, one use case (citizen-311), frozen image + config |
-| **Operator** | the reviewer (independent). The author/agent does **not** run this. |
+| **Operator** | whoever runs it — for *release-acceptance* this must NOT be the author. The agent does **not** run it. |
+
+> **Honesty note:** running in the same account where the author already live-verified (e.g.
+> `864217980669`) is a valid *validation* run and will exercise everything end to end, but it does **not**
+> by itself meet the *release-accepted* bar, which requires a different account than the author's. Record
+> the run as what it is.
 
 ## Ground rules
 
@@ -30,8 +41,8 @@ teaching/customer docs against reality.
 ## Step 0 — environment + account guard
 
 ```bash
-export PROFILE=daviryde-personal-sandbox
-export EXPECT_ACCOUNT=663898937974
+export PROFILE=<named-profile-for-the-target-account>
+export EXPECT_ACCOUNT=<target-account-id>   # see the "This run" table above for which account
 export R=us-east-1
 export CUST=acme-mvp
 export ENV=dev
@@ -174,7 +185,7 @@ re-run the live gate (separation of operator from author is the point).
 GOVERNED AI — STANDALONE MVP ACCEPTANCE SIGN-OFF
 Operator:            <name>              Date (UTC): <>
 Commit SHA:          <>                  CDK: <>   AWS CLI: <>
-Account / Region:    663898937974 / us-east-1
+Account / Region:    <account-id> / us-east-1    Run type: validation | release-acceptance
 Config:              config/acme-mvp.json   Image digest: <…@sha256:…>
 
 Local gate:          build [ ]  48 jest [ ]  28 pytest [ ]  nag 0 [ ]

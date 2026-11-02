@@ -4,7 +4,7 @@ import * as bedrock from 'aws-cdk-lib/aws-bedrock';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import { Construct } from 'constructs';
-import { GuardrailConfig, PlatformConfig } from '../config/platform-config';
+import { GuardrailConfig, PlatformConfig, denyUngovernedInference } from '../config/platform-config';
 
 export interface PlatformGuardrailProps {
   config: PlatformConfig;
@@ -22,9 +22,11 @@ const CONTENT_FILTER_TYPES = ['HATE', 'INSULTS', 'SEXUAL', 'VIOLENCE', 'MISCONDU
  * (SRA omits this; PORT-MAP calls for adding it).
  *
  * `ungovernedInferenceDenyPolicy` is the key enforcement artefact: it denies any Bedrock inference
- * call that carries no `bedrock:GuardrailIdentifier` (the Null-condition pattern). In a single
- * account it is attached to agent/execution roles (step 3); org mode lifts the same statement into
- * an SCP for true account-wide enforcement.
+ * call that carries no `bedrock:GuardrailIdentifier` (the Null-condition pattern) or carries an
+ * unapproved one. It is created here and published; in standalone/spoke the AgentPlatform stack
+ * attaches it to **the governed runtime role only** — so it binds the agent's execution role, NOT
+ * every principal in the account. Account-/org-wide enforcement is org mode, which lifts the same
+ * statement into an SCP. Do not describe standalone as account-wide ungoverned-inference denial.
  */
 export class PlatformGuardrail extends Construct {
   readonly guardrail: bedrock.CfnGuardrail;
@@ -102,8 +104,10 @@ export class PlatformGuardrail extends Construct {
     });
     this.guardrailId = this.guardrail.attrGuardrailId;
 
-    // Deny any inference call that does not attach a guardrail (ungoverned inference).
-    if (g.enforceAccountLevel) {
+    // Deny ungoverned inference for the GOVERNED RUNTIME ROLE (the policy is created here and attached
+    // to that role in the AgentPlatform stack). NOT account-wide — see the field doc. Org mode lifts
+    // the same statement into an SCP for account-/org-wide enforcement.
+    if (denyUngovernedInference(g)) {
       this.ungovernedInferenceDenyPolicy = new iam.ManagedPolicy(this, 'UngovernedInferenceDeny', {
         description: 'Denies Bedrock inference that does not carry a guardrail identifier.',
         statements: [

@@ -82,8 +82,9 @@ floor underneath everything."
 **Show:** `run-acceptance.sh --only killswitch` → engage blocks all tool calls at the gateway; release
 restores. (Or invoke the kill-switch Lambda live.)
 
-**The point:** "Instant, account-wide containment — and it fails closed: it only reports 'engaged' once
-the block is confirmed active, and only reports 'released' once it confirms the block is gone."
+**The point:** "Instant containment — it blocks every tool call at the governed gateway — and it fails
+closed: it only reports 'engaged' once the block is confirmed active, and only reports 'released' once
+it confirms the block is gone."
 
 ## Beat 7 — Prove what happened (2 min)
 

@@ -1,5 +1,5 @@
 {
-  "_comment": "Minimal, self-contained STANDALONE MVP profile — one account, one region, one use case, Cedar ENFORCE, no hub/org, no optional capabilities. Copy to config/<customer>.json and set region + runtimeImageUri (immutable digest from build-image.sh). This is the profile the acceptance gate (docs/runbooks/DEPLOYMENT.md) is written against.",
+  "_comment": "Minimal, self-contained STANDALONE MVP profile — one account, one region, one use case, Cedar ENFORCE, no hub/org, no optional capabilities. Copy to config/<customer>.json and set region + runtimeImageUri (immutable digest from use-cases/_harness/build-image.sh). This is the profile the acceptance gate (docs/runbooks/DEPLOYMENT.md) is written against.",
   "customerName": "acme-mvp",
   "environment": "dev",
   "region": "us-east-1",
@@ -29,11 +29,11 @@
         { "name": "LegalAdvice", "definition": "Providing definitive legal advice to members of the public.", "examples": ["Am I legally required to repay this?"] }
       ],
       "blockedMessage": "This request can't be completed under this organization's AI use policy.",
-      "enforceAccountLevel": true
+      "denyUngovernedInference": true
     }
   },
   "agentcore": {
-    "_comment_image": "Set runtimeImageUri to the IMMUTABLE DIGEST printed by build-image.sh (…@sha256:…), not a tag.",
+    "_comment_image": "Set runtimeImageUri to the IMMUTABLE DIGEST printed by use-cases/_harness/build-image.sh (…@sha256:…), not a tag.",
     "runtimeImageUri": "REPLACE_WITH_ECR_DIGEST_URI",
     "useCaseManifest": "use-cases/citizen-311/manifest.yaml",
     "accessTokenValidityMinutes": 15,

@@ -14,8 +14,22 @@ export interface GuardrailConfig {
   piiEntitiesToAnonymize: string[];
   deniedTopics: { name: string; definition: string; examples?: string[] }[];
   blockedMessage: string;
-  /** Enforce on every Bedrock inference call in this account (account-level enforcement). */
-  enforceAccountLevel: boolean;
+  /** When true, create the ungoverned-inference deny policy and bind it to the **governed runtime
+   * role** (the agent's execution role): that role is denied any Bedrock inference lacking the approved
+   * guardrail, and any model outside the allowlist. This is scoped to the governed runtime role — it is
+   * NOT account-wide; other principals in the account are unaffected. True account-/org-wide enforcement
+   * is **org mode**, which lifts the same deny statement into an SCP. Do not represent this as
+   * account-wide enforcement in standalone/spoke. */
+  denyUngovernedInference?: boolean;
+  /** @deprecated Misleading name (it was never account-wide — see `denyUngovernedInference`). Still
+   * honored as a fallback so existing configs keep working; the loader warns when it is used. */
+  enforceAccountLevel?: boolean;
+}
+
+/** Whether to bind the ungoverned-inference deny to the governed runtime role. Prefers the accurate
+ * `denyUngovernedInference`; falls back to the deprecated `enforceAccountLevel`. */
+export function denyUngovernedInference(g: GuardrailConfig): boolean {
+  return g.denyUngovernedInference ?? g.enforceAccountLevel ?? false;
 }
 
 /** 'aws' = commercial (default); 'aws-us-gov' = GovCloud (US) — gated on per-service availability. */
@@ -307,6 +321,13 @@ function validate(cfg: PlatformConfig): void {
     errs.push(
       `agentcore.runtimeImageUri must be an immutable digest URI (…@sha256:…), not a tag. ` +
         `Got "${img}". Build the image (use-cases/_harness/build-image.sh prints IMAGE_DIGEST_URI) and paste that.`,
+    );
+  if (cfg.governance.guardrail?.enforceAccountLevel !== undefined && cfg.governance.guardrail.denyUngovernedInference === undefined)
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[config] governance.guardrail.enforceAccountLevel is deprecated and MISLEADING — it binds the " +
+        'ungoverned-inference deny to the governed runtime role only, NOT account-wide. Rename it to ' +
+        'denyUngovernedInference. Account-/org-wide enforcement is org mode (SCP).',
     );
   if (img === RUNTIME_IMAGE_PLACEHOLDER)
     // eslint-disable-next-line no-console

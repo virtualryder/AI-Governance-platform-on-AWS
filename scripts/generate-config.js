@@ -137,11 +137,12 @@ function buildConfig(a) {
           },
         ],
         blockedMessage: "This request can't be completed under this organization's AI use policy.",
-        enforceAccountLevel: true,
+        // Binds the ungoverned-inference deny to the governed runtime role (NOT account-wide — that's org mode).
+        denyUngovernedInference: true,
       },
     },
     agentcore: {
-      _comment_image: 'Set runtimeImageUri to the IMMUTABLE DIGEST printed by build-image.sh (…@sha256:…), not a tag.',
+      _comment_image: 'Set runtimeImageUri to the IMMUTABLE DIGEST printed by use-cases/_harness/build-image.sh (…@sha256:…), not a tag.',
       runtimeImageUri: PLACEHOLDER,
       useCaseManifest: a.useCaseManifest,
       accessTokenValidityMinutes: 15,

@@ -49,7 +49,7 @@ Controls not yet listed are design targets realized in later steps.
 | # | Control | Service / resource | IaC | Modes | Notes |
 |---|---|---|---|---|---|
 | B1 | Content/PII/topic guardrail | Bedrock Guardrail + immutable version | L1/Custom | S,P,H | Filters, denied topics, PII block/mask, contextual grounding |
-| B2 | Account-level enforcement | Guardrail applied to all inference in account | Custom | S,P | Via config `enforceAccountLevel` |
+| B2 | Ungoverned-inference deny (runtime-role-scoped) | IAM deny on the **governed runtime role** for any Bedrock inference lacking the approved guardrail / outside the model allowlist — NOT account-wide (account-/org-wide is O1 via SCP) | Custom | S,P | Via config `denyUngovernedInference` (was `enforceAccountLevel`) |
 | B3 | Org-wide enforcement | Bedrock **declarative policy** (Organizations) | Custom/StackSets | O | Verify `DescribeEffectivePolicy`; no automated-reasoning org-wide |
 | B4 | Guardrail SCP backstop | `bedrock:GuardrailIdentifier` condition | SCP | O | `Null:true` deny = must use a guardrail; `StringNotEquals` pins version |
 

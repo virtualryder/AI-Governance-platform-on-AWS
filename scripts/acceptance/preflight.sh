@@ -34,17 +34,25 @@ else
   fail "CDK bootstrap missing — run: npx cdk bootstrap aws://$EXPECT_ACCOUNT/$R --profile $PROFILE"
 fi
 
-# 5. Platform discovery params resolve (the stacks are deployed).
-need=(agent-platform/gateway-arn agent-platform/human-client-id controls/hitl-approvals-table \
-      controls/hitl-approval-fn-arn controls/hitl-approver-role-arn controls/kill-switch-fn-arn \
-      baseline/guardrail-id)
-for p in "${need[@]}"; do
-  v="$(ssm "$p")"
-  if [ -n "$v" ] && [ "$v" != "None" ]; then pass "discovered: $p"; else fail "missing SSM param: /governed-ai/$CUST/$ENV/$p (is the platform deployed with this CUST/ENV?)"; fi
-done
-
-# 6. Runtime activated (a use case is deployed). Not fatal — governance can be validated without it.
-rt="$(ssm agent-platform/runtime-arn)"
-if [ -n "$rt" ] && [ "$rt" != "None" ]; then pass "runtime active (use case deployed)"; else warn "no runtime-arn — runtime-dependent checks (authorized/HITL) will SKIP; build the image + redeploy (runbook §12b)"; fi
+# 5. Platform discovery params. BEFORE the first deploy these don't exist yet — that is EXPECTED and
+#    not a failure (this is the first script a new SA runs). Anchor on the gateway param: if it's
+#    absent the platform simply isn't deployed; if it's present, a missing sibling IS a real
+#    (partial-deploy) failure.
+anchor="$(ssm agent-platform/gateway-arn)"
+if [ -z "$anchor" ] || [ "$anchor" = "None" ]; then
+  note "platform not deployed yet for $CUST/$ENV (no gateway param) — EXPECTED before your first"
+  note "deploy. Deploy per runbook §12b, then re-run preflight; these become PASS."
+else
+  need=(agent-platform/human-client-id controls/hitl-approvals-table controls/hitl-approval-fn-arn \
+        controls/hitl-approver-role-arn controls/kill-switch-fn-arn baseline/guardrail-id)
+  pass "discovered: agent-platform/gateway-arn"
+  for p in "${need[@]}"; do
+    v="$(ssm "$p")"
+    if [ -n "$v" ] && [ "$v" != "None" ]; then pass "discovered: $p"; else fail "missing SSM param: /governed-ai/$CUST/$ENV/$p (partial deploy?)"; fi
+  done
+  # Runtime activated (a use case is deployed). Not fatal — governance can be validated without it.
+  rt="$(ssm agent-platform/runtime-arn)"
+  if [ -n "$rt" ] && [ "$rt" != "None" ]; then pass "runtime active (use case deployed)"; else warn "no runtime-arn — runtime-dependent checks (authorized/HITL) will SKIP; build the image + redeploy (runbook §12b)"; fi
+fi
 
 summary
